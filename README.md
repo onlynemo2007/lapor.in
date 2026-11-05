@@ -33,6 +33,10 @@ Satu sel lampiran per tim/per minggu bisa memuat **lebih dari satu tautan**:
 4. Aktifkan **Kirim otomatis** (default aktif). Untuk rekan setim: bagikan **tautan siap pakai** dari halaman
    yang sama agar perangkat mereka langsung ikut sinkron tanpa mengisi apa pun.
 
+URL Web App dan token disimpan pada kunci penyimpanan terpisah (`laporin:koneksi`), sehingga **tidak pernah hilang**
+saat data mingguan diperbarui, sheet dimuat ulang, aplikasi versi baru dibuka, atau ruang penyimpanan data penuh.
+Mengosongkan kolom URL/token juga tidak menghapus koneksi — pemutusan hanya lewat tombol **Putuskan koneksi**.
+
 Skrip membaca posisi kolom dari baris judul dan mencari baris berdasarkan **tim + tanggal**, sehingga aman
 bila ada baris/kolom yang disisipkan. Setiap kiriman dicatat di tab tersembunyi `_audit`.
 

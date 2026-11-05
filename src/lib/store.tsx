@@ -38,6 +38,8 @@ type Persisted = {
 
 const KEY = "laporin:v3";
 const KEY_LAMA = "laporin:v2";
+/** URL Web App + token disimpan terpisah agar tidak ikut hilang saat data mingguan berubah/dibersihkan. */
+const KEY_KONEKSI = "laporin:koneksi";
 
 /** Jeda setelah isian terakhir sebelum dikirim (mencegah kiriman bertubi-tubi saat mengetik). */
 const JEDA_TULIS = 900;
@@ -54,23 +56,50 @@ const defaultSettings: Settings = {
   extraTabs: [],
 };
 
+/** Koneksi Apps Script tersimpan sendiri; null berarti belum pernah disimpan. */
+function bacaKoneksi(): { scriptUrl: string; token: string; autoSync?: boolean } | null {
+  try {
+    const raw = localStorage.getItem(KEY_KONEKSI);
+    if (!raw) return null;
+    const k = JSON.parse(raw) as { scriptUrl?: unknown; token?: unknown; autoSync?: unknown };
+    return {
+      scriptUrl: typeof k.scriptUrl === "string" ? k.scriptUrl : "",
+      token: typeof k.token === "string" ? k.token : "",
+      autoSync: typeof k.autoSync === "boolean" ? k.autoSync : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function load(): Persisted {
+  let settings: Settings = defaultSettings;
+  let weeks: Record<string, WeekData> = {};
+  let trend: Persisted["trend"] = {};
+  let log: SyncLog[] = [];
   try {
     const raw = localStorage.getItem(KEY) ?? localStorage.getItem(KEY_LAMA);
     if (raw) {
       const p = JSON.parse(raw) as Partial<Persisted>;
-      return {
-        v: 2,
-        settings: { ...defaultSettings, ...p.settings },
-        weeks: p.weeks ?? {},
-        trend: p.trend ?? {},
-        log: p.log ?? [],
-      };
+      settings = { ...defaultSettings, ...p.settings };
+      weeks = p.weeks ?? {};
+      trend = p.trend ?? {};
+      log = p.log ?? [];
     }
   } catch {
-    /* abaikan */
+    /* data rusak — pakai bawaan, koneksi tetap dibaca di bawah */
   }
-  return { v: 2, settings: defaultSettings, weeks: {}, trend: {}, log: [] };
+  // Koneksi yang tersimpan terpisah selalu menang (termasuk saat sengaja dikosongkan)
+  const koneksi = bacaKoneksi();
+  if (koneksi) {
+    settings = {
+      ...settings,
+      scriptUrl: koneksi.scriptUrl,
+      token: koneksi.token,
+      autoSync: koneksi.autoSync ?? settings.autoSync,
+    };
+  }
+  return { v: 2, settings, weeks, trend, log };
 }
 
 /** Pindahkan isian dari versi lama (lm.entries / lm.plans) ke minggu Nov I. */
@@ -123,6 +152,8 @@ export type TautanSiapPakai = { scriptUrl: string; token: string };
 type Ctx = {
   settings: Settings;
   setSettings: (p: Partial<Settings>) => void;
+  /** Putus koneksi Apps Script di perangkat ini (URL & token dikosongkan). */
+  putuskanKoneksi: () => void;
   tabs: Tab[];
   week: WeekData | null;
   weeks: Record<string, WeekData>;
@@ -169,10 +200,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const runRef = useRef<(paksa?: boolean) => Promise<void>>(async () => {});
 
   useEffect(() => {
+    // 1) Koneksi Apps Script disimpan lebih dulu (kecil, hampir tidak mungkin gagal)
+    try {
+      localStorage.setItem(
+        KEY_KONEKSI,
+        JSON.stringify({ scriptUrl: data.settings.scriptUrl, token: data.settings.token, autoSync: data.settings.autoSync }),
+      );
+    } catch {
+      /* penyimpanan penuh — data lain di bawah tetap dicoba */
+    }
+    // 2) Data mingguan & riwayat
     try {
       localStorage.setItem(KEY, JSON.stringify(data));
     } catch {
-      /* kuota penuh */
+      // Kuota penuh: simpan versi ringkas agar isian & koneksi tetap aman
+      try {
+        localStorage.setItem(KEY, JSON.stringify({ v: 2, settings: data.settings, weeks: data.weeks, trend: {}, log: [] }));
+      } catch {
+        /* menyerah dengan tenang — koneksi sudah tersimpan terpisah */
+      }
     }
   }, [data]);
 
@@ -413,7 +459,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!tautan) return;
     setData((d) => ({
       ...d,
-      settings: { ...d.settings, scriptUrl: tautan.scriptUrl, token: tautan.token, autoSync: true },
+      settings: {
+        ...d.settings,
+        // nilai lama tidak dihapus kalau tautan tidak membawa isian tersebut
+        scriptUrl: tautan.scriptUrl || d.settings.scriptUrl,
+        token: tautan.token || d.settings.token,
+        autoSync: true,
+      },
     }));
     setTautan(null);
     percobaan.current = 0;
@@ -430,7 +482,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [data.settings.extraTabs]);
 
   const setSettings = useCallback((p: Partial<Settings>) => {
-    setData((d) => ({ ...d, settings: { ...d.settings, ...p } }));
+    setData((d) => {
+      const baru = { ...d.settings, ...p };
+      // URL Web App & token yang sudah ada tidak boleh terhapus oleh nilai kosong.
+      // Untuk memutus koneksi, gunakan putuskanKoneksi().
+      if (!p.scriptUrl) baru.scriptUrl = d.settings.scriptUrl;
+      if (!p.token) baru.token = d.settings.token;
+      return { ...d, settings: baru };
+    });
+  }, []);
+
+  /** Putus koneksi Apps Script di perangkat ini saja (sheet tidak diubah). */
+  const putuskanKoneksi = useCallback(() => {
+    setData((d) => ({ ...d, settings: { ...d.settings, scriptUrl: "", token: "" } }));
   }, []);
 
   const reload = useCallback(
@@ -500,6 +564,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value: Ctx = {
     settings: data.settings,
     setSettings,
+    putuskanKoneksi,
     tabs,
     week,
     weeks: data.weeks,

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../lib/store";
 import { SPREADSHEET_ID, slotLabel, tanggalPendek, timById } from "../lib/model";
 import { APPS_SCRIPT, blokSalin, tesScript } from "../lib/sheet";
@@ -12,6 +12,7 @@ export default function SinkronView() {
     week,
     settings,
     setSettings,
+    putuskanKoneksi,
     reload,
     dirtyCount,
     pendingCount,
@@ -32,13 +33,51 @@ export default function SinkronView() {
   const [bukaKode, setBukaKode] = useState(false);
   const [bukaKoneksi, setBukaKoneksi] = useState(false);
   const [bukaCadangan, setBukaCadangan] = useState(false);
+  // isian koneksi memakai draf: URL & token yang sudah ada tidak pernah terhapus saat mengetik/keluar kolom
+  const [urlDraf, setUrlDraf] = useState(settings.scriptUrl);
+  const [tokenDraf, setTokenDraf] = useState(settings.token);
+
+  useEffect(() => {
+    setUrlDraf(settings.scriptUrl);
+    setTokenDraf(settings.token);
+  }, [settings.scriptUrl, settings.token]);
 
   const blok = useMemo(() => (week ? blokSalin(week) : []), [week]);
   if (!week) return <StateGate />;
 
   const terpasang = !!settings.scriptUrl && !!settings.token;
+  const tautanSama = !!tautan && tautan.scriptUrl === settings.scriptUrl && tautan.token === settings.token;
   const urlValid = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec/.test(settings.scriptUrl);
   const sheetUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit#gid=${week.gid}`;
+
+  const simpanKoneksi = (diam = false) => {
+    const url = urlDraf.trim();
+    const tok = tokenDraf.trim();
+    const patch: { scriptUrl?: string; token?: string } = {};
+    if (url && url !== settings.scriptUrl) patch.scriptUrl = url;
+    if (tok && tok !== settings.token) patch.token = tok;
+    if (!Object.keys(patch).length) {
+      setUrlDraf(settings.scriptUrl);
+      setTokenDraf(settings.token);
+      if (!diam) toast("Koneksi tidak berubah", "info");
+      return;
+    }
+    setSettings(patch);
+    toast("Koneksi disimpan di perangkat ini");
+    setHasil({ ok: true, text: "URL & token tersimpan di perangkat ini — tidak terhapus saat data diperbarui atau aplikasi dimuat ulang." });
+  };
+
+  const putus = () => {
+    const yakin = window.confirm(
+      "Putuskan koneksi Apps Script di perangkat ini?\n\nURL Web App dan token akan dihapus dari perangkat ini saja. Isi Google Sheet tidak berubah, dan isian yang belum terkirim tetap tersimpan.",
+    );
+    if (!yakin) return;
+    putuskanKoneksi();
+    setUrlDraf("");
+    setTokenDraf("");
+    setHasil(null);
+    toast("Koneksi diputus di perangkat ini", "info");
+  };
 
   const doCopy = async (id: string, text: string, pesan?: string) => {
     const ok = await salin(text);
@@ -115,16 +154,26 @@ export default function SinkronView() {
               <I.bolt className="h-5 w-5" />
             </span>
             <div className="min-w-[220px] flex-1">
-              <p className="text-[13.5px] font-bold">Tautan berisi pengaturan sinkron</p>
-              <p className="text-[12px] text-muted">Sekali klik, perangkat ini langsung ikut mengirim otomatis ke sheet.</p>
+              <p className="text-[13.5px] font-bold">
+                {tautanSama ? "Tautan ini sama dengan koneksi tersimpan" : terpasang ? "Perangkat ini sudah tersambung" : "Tautan berisi pengaturan sinkron"}
+              </p>
+              <p className="text-[12px] leading-relaxed text-muted">
+                {tautanSama
+                  ? "Tidak ada yang perlu diubah — URL & token yang tersimpan tetap dipakai."
+                  : terpasang
+                    ? "Tautan membawa URL/token lain. Koneksi yang sekarang tetap aman bila Anda memilih pertahankan."
+                    : "Sekali klik, perangkat ini langsung ikut mengirim otomatis ke sheet."}
+              </p>
             </div>
             <div className="flex gap-2">
               <Btn variant="ghost" size="sm" onClick={buangTautan}>
-                Nanti
+                {terpasang ? "Pertahankan yang ada" : "Nanti"}
               </Btn>
-              <Btn variant="brand" size="sm" onClick={terapkanTautan}>
-                <I.check className="h-3.5 w-3.5" /> Aktifkan
-              </Btn>
+              {!tautanSama && (
+                <Btn variant="brand" size="sm" onClick={terapkanTautan}>
+                  <I.check className="h-3.5 w-3.5" /> {terpasang ? "Ganti dengan tautan ini" : "Aktifkan"}
+                </Btn>
+              )}
             </div>
           </div>
         </Card>
@@ -326,12 +375,19 @@ export default function SinkronView() {
             <div>
               <label className="block text-[12px] font-semibold text-muted">URL Web App</label>
               <input
-                value={settings.scriptUrl}
-                onChange={(e) => setSettings({ scriptUrl: e.target.value.trim() })}
+                value={urlDraf}
+                onChange={(e) => setUrlDraf(e.target.value)}
+                onBlur={() => simpanKoneksi(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    simpanKoneksi();
+                  }
+                }}
                 placeholder="https://script.google.com/macros/s/…/exec"
                 className="mt-1.5 h-11 w-full rounded-xl border border-line bg-paper px-3 font-mono text-[12px] outline-none transition focus:border-brand focus:bg-white"
               />
-              {settings.scriptUrl && !urlValid && (
+              {urlDraf.trim() && !urlValid && (
                 <p className="mt-1 text-[11.5px] text-warn">URL biasanya berakhiran <code className="font-mono">/exec</code>.</p>
               )}
 
@@ -339,13 +395,28 @@ export default function SinkronView() {
                 Token (kode rahasia yang sama dengan di skrip)
               </label>
               <input
-                value={settings.token}
-                onChange={(e) => setSettings({ token: e.target.value.trim() })}
+                value={tokenDraf}
+                onChange={(e) => setTokenDraf(e.target.value)}
+                onBlur={() => simpanKoneksi(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    simpanKoneksi();
+                  }
+                }}
                 placeholder="cth. dukman-2026-xyz"
                 className="mt-1.5 h-11 w-full rounded-xl border border-line bg-paper px-3 font-mono text-[12px] outline-none transition focus:border-brand focus:bg-white"
               />
 
+              <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">
+                Tersimpan di perangkat ini dan <b>tidak terhapus</b> saat data mingguan diperbarui, sheet dimuat ulang, atau
+                aplikasi diperbarui. Mengosongkan kolom tidak menghapus koneksi.
+              </p>
+
               <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Btn variant="primary" size="sm" onClick={() => simpanKoneksi()} disabled={busy !== ""}>
+                  <I.check className="h-3.5 w-3.5" /> Simpan koneksi
+                </Btn>
                 <Btn variant="ghost" size="sm" onClick={tes} disabled={!settings.scriptUrl || busy !== ""}>
                   {busy === "tes" ? <Spinner className="h-3.5 w-3.5" /> : <I.bolt className="h-3.5 w-3.5" />}
                   Tes koneksi
@@ -387,6 +458,17 @@ export default function SinkronView() {
                   >
                     {copied === "tautan" ? <I.check className="h-3.5 w-3.5" /> : <I.link className="h-3.5 w-3.5" />}
                     {copied === "tautan" ? "Tersalin" : "Salin tautan siap pakai"}
+                  </Btn>
+                </div>
+              )}
+
+              {terpasang && (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper p-3">
+                  <p className="text-[11.5px] leading-relaxed text-muted">
+                    Hanya bila ingin memutus dari perangkat ini. Sheet tidak diubah.
+                  </p>
+                  <Btn variant="danger" size="sm" onClick={putus} disabled={busy !== ""}>
+                    <I.x className="h-3.5 w-3.5" /> Putuskan koneksi
                   </Btn>
                 </div>
               )}
