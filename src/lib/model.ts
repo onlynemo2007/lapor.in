@@ -218,6 +218,63 @@ export const cleanDate = (s: string) => {
   return `${d.getDate()} ${b[0].toUpperCase()}${b.slice(1)} ${d.getFullYear()}`;
 };
 
+/* ------------------------- minggu berikutnya ------------------------- */
+
+/** Singkatan bulan seperti dipakai pada nama tab sheet ("Nov I", "Agust III"). */
+export const BULAN_SINGKAT = ["Jan", "Feb", "Mar", "April", "Mei", "Jun", "Jul", "Agust", "Sept", "Okt", "Nov", "Des"];
+export const ROMAWI = ["I", "II", "III", "IV", "V", "VI"];
+
+/** Pekan ke berapa dalam bulan (1–5) menurut tanggalnya. */
+export const pekanKe = (d: Date) => Math.min(5, Math.floor((d.getDate() - 1) / 7) + 1);
+
+/** Label tab dari sebuah tanggal: 3 Nov 2025 → "Nov I", 10 Nov 2025 → "Nov II". */
+export const labelMinggu = (d: Date) => `${BULAN_SINGKAT[d.getMonth()]} ${ROMAWI[pekanKe(d) - 1]}`;
+
+/** Tanggal terakhir (paling baru) dari daftar tanggal sebuah tab. */
+export function tanggalTerakhir(dates: string[]): Date | null {
+  let max: Date | null = null;
+  dates.forEach((s) => {
+    const d = parseTanggal(s);
+    if (d && (!max || d > max)) max = d;
+  });
+  return max;
+}
+
+/** Rentang tanggal tab setelah digeser (untuk pratinjau "10 – 14 Nov 2025"). */
+export function rentangSetelahGeser(dates: string[], geserHari: number): { dari: string; sampai: string } | null {
+  const all = dates
+    .map((s) => parseTanggal(s))
+    .filter((d): d is Date => !!d)
+    .map((d) => {
+      const n = new Date(d);
+      n.setDate(n.getDate() + geserHari);
+      return n;
+    })
+    .sort((a, b) => a.getTime() - b.getTime());
+  if (!all.length) return null;
+  const teks = (d: Date) => `${tanggalPendek(`${d.getDate()} ${BULAN[d.getMonth()]} ${d.getFullYear()}`)} ${d.getFullYear()}`;
+  return { dari: teks(all[0]), sampai: teks(all[all.length - 1]) };
+}
+
+/**
+ * Saran nama tab minggu berikutnya berdasarkan tanggal tab sumber.
+ * "3–7 Nov 2025" → "Nov II". Bila tanggal tak terbaca, angka romawi di nama dinaikkan.
+ */
+export function saranNamaMinggu(w: { tab: string; dates: string[] }, geserHari = 7): string {
+  const akhir = tanggalTerakhir(w.dates);
+  if (akhir) {
+    const n = new Date(akhir);
+    n.setDate(n.getDate() + geserHari);
+    return labelMinggu(n);
+  }
+  const m = w.tab.trim().match(/^(.*?)(I{1,3}|IV|V)$/);
+  if (m) {
+    const i = ROMAWI.indexOf(m[2]);
+    if (i >= 0 && i < ROMAWI.length - 1) return `${m[1]}${ROMAWI[i + 1]}`.trim();
+  }
+  return w.tab.trim();
+}
+
 /* ---------------------------- teks & uraian ---------------------------- */
 
 /** Pecah sel uraian sheet ("1. a\n2. b") menjadi daftar butir. */

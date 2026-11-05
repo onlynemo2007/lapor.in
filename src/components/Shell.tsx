@@ -132,9 +132,30 @@ export default function Shell({ view, children }: { view: View; children: ReactN
                   Tab {t.name}
                 </option>
               ))}
+              {/* tab aktif yang belum ada di daftar (mis. baru dibuat rekan) tetap tampil */}
+              {!tabs.some((t) => t.gid === settings.activeGid) && (
+                <option value={settings.activeGid}>Tab {week?.tab ?? settings.activeGid}</option>
+              )}
             </select>
             <I.down className="pointer-events-none absolute right-3 h-4 w-4 text-muted" />
           </label>
+
+          <Btn
+            variant="ghost"
+            size="sm"
+            className="h-10 shrink-0 px-2.5"
+            title="Buat tab minggu baru di spreadsheet (struktur sama, isi kosong)"
+            onClick={() => {
+              go("sinkron", { buat: "1" });
+              window.setTimeout(
+                () => document.getElementById("minggu-baru")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                150,
+              );
+            }}
+          >
+            <I.plus className="h-4 w-4" />
+            <span className="hidden md:inline">Minggu baru</span>
+          </Btn>
 
           <p className="hidden min-w-0 truncate text-[12.5px] text-muted xl:block">{week?.judul ?? ""}</p>
 

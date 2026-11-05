@@ -15,7 +15,7 @@ function Router() {
       {view === "isi" && <IsiView params={params} />}
       {view === "presensi" && <PresensiView />}
       {view === "pratinjau" && <PratinjauView />}
-      {view === "sinkron" && <SinkronView />}
+      {view === "sinkron" && <SinkronView params={params} />}
     </Shell>
   );
 }

@@ -14,7 +14,7 @@ import {
   SLOT_ROWS,
   TIMS,
 } from "./model";
-import { fetchWeek, kirimKeScript, mergeWeek } from "./sheet";
+import { buatTabBaru, fetchWeek, kirimKeScript, mergeWeek, tesScript } from "./sheet";
 import { jumlahTertunda, siapkanKiriman, tandaiTerkirim, verifikasiKiriman, type SyncLog, type SyncState } from "./sync";
 
 export type Settings = {
@@ -149,6 +149,8 @@ type LoadState = { status: "idle" | "loading" | "ok" | "error"; error?: string }
 
 export type TautanSiapPakai = { scriptUrl: string; token: string };
 
+export type HasilBuatMinggu = { ok: boolean; gid?: string; nama?: string; error?: string; terbaca?: boolean };
+
 type Ctx = {
   settings: Settings;
   setSettings: (p: Partial<Settings>) => void;
@@ -158,7 +160,13 @@ type Ctx = {
   week: WeekData | null;
   weeks: Record<string, WeekData>;
   loadState: LoadState;
-  reload: (gid?: string) => Promise<void>;
+  /** Muat ulang tab dari sheet; hasil `true` bila berhasil terbaca. */
+  reload: (gid?: string) => Promise<boolean>;
+  /**
+   * Buat tab minggu baru di spreadsheet: salinan struktur tab sumber,
+   * isian mingguan kosong, tanggal digeser (default +7 hari).
+   */
+  buatMingguBaru: (p: { nama: string; sumberGid?: string; geserHari?: number }) => Promise<HasilBuatMinggu>;
   updateWeek: (fn: (w: WeekData) => WeekData) => void;
   trend: Persisted["trend"];
   loadTrend: (n?: number) => Promise<void>;
@@ -221,6 +229,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [data]);
+
+  // Segarkan daftar tab sekali saat aplikasi dibuka: tab minggu baru yang sudah
+  // dibuat (dari perangkat lain) langsung muncul di pemilih minggu.
+  const pingAwal = useRef(false);
+  useEffect(() => {
+    if (pingAwal.current) return;
+    pingAwal.current = true;
+    const st = dataRef.current.settings;
+    if (!st.scriptUrl) return;
+    void (async () => {
+      try {
+        const r = await tesScript(st.scriptUrl);
+        if (!r.ok || !r.tabs?.length) return;
+        const extra = r.tabs.filter((t) => !t.name.startsWith("_"));
+        setData((d) => ({ ...d, settings: { ...d.settings, extraTabs: extra } }));
+      } catch {
+        /* diamkan — daftar tab bawaan tetap dipakai */
+      }
+    })();
+  }, []);
 
   /* ----------------------------- sinkron otomatis ----------------------------- */
 
@@ -514,11 +542,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
           trend: { ...d.trend, [g]: { ...r, judul: tab.name } },
         }));
         setLoadState({ status: "ok" });
+        return true;
       } catch (e) {
         setLoadState({ status: "error", error: e instanceof Error ? e.message : "Gagal memuat sheet." });
+        return false;
       }
     },
     [tabs],
+  );
+
+  /** Buat tab minggu baru di spreadsheet (lewat Apps Script), lalu buka tab itu. */
+  const buatMingguBaru = useCallback(
+    async (p: { nama: string; sumberGid?: string; geserHari?: number }): Promise<HasilBuatMinggu> => {
+      const st = dataRef.current.settings;
+      if (!st.scriptUrl || !st.token) return { ok: false, error: "Sambungkan Apps Script dulu agar aplikasi bisa membuat tab baru." };
+      const nama = p.nama.replace(/\s+/g, " ").trim();
+      if (!nama) return { ok: false, error: "Nama tab baru belum diisi." };
+      const sumber = p.sumberGid || st.activeGid;
+      try {
+        const r = await buatTabBaru(st.scriptUrl, st.token, sumber, nama, p.geserHari ?? 7, st.nama);
+        if (!r.ok || !r.gid) return { ok: false, error: r.error ?? "Tab baru tidak dibuat." };
+        const tab: Tab = { name: r.name ?? nama, gid: String(r.gid) };
+        setData((d) => ({
+          ...d,
+          settings: {
+            ...d.settings,
+            extraTabs: [tab, ...d.settings.extraTabs.filter((t) => t.gid !== tab.gid)],
+            activeGid: tab.gid,
+          },
+        }));
+        catatLog({ at: Date.now(), ok: true, gid: tab.gid, tab: tab.name, sel: 0, pesan: "Tab minggu baru dibuat dari tab sebelumnya" });
+        // Tab yang baru dibuat kadang belum langsung tersedia pada ekspor CSV — coba beberapa kali.
+        let terbaca = false;
+        for (let i = 0; i < 3 && !terbaca; i++) {
+          if (i) await new Promise((res) => setTimeout(res, 1600));
+          terbaca = await reload(tab.gid);
+        }
+        return { ok: true, gid: tab.gid, nama: tab.name, terbaca };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : "Gagal membuat tab baru." };
+      }
+    },
+    [catatLog, reload],
   );
 
   const updateWeek = useCallback((fn: (w: WeekData) => WeekData) => {
@@ -570,6 +635,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     weeks: data.weeks,
     loadState,
     reload,
+    buatMingguBaru,
     updateWeek,
     trend: data.trend,
     loadTrend,

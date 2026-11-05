@@ -1,19 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../lib/store";
-import { SPREADSHEET_ID, slotLabel, tanggalPendek, timById } from "../lib/model";
-import { APPS_SCRIPT, blokSalin, tesScript } from "../lib/sheet";
+import { SPREADSHEET_ID, rentangSetelahGeser, saranNamaMinggu, slotLabel, tanggalPendek, timById } from "../lib/model";
+import { APPS_SCRIPT, SCRIPT_VERSI, blokSalin, tesScript } from "../lib/sheet";
 import { jamSinkron, waktuSinkron } from "../lib/sync";
 import { Btn, Card, I, Pill, Spinner, cx, salin, useToast } from "../components/ui";
 import { StatusSinkron } from "../components/SyncBadge";
 import { StateGate } from "./common";
 
-export default function SinkronView() {
+export default function SinkronView({ params }: { params: URLSearchParams }) {
   const {
     week,
+    weeks,
+    tabs,
     settings,
     setSettings,
     putuskanKoneksi,
     reload,
+    buatMingguBaru,
     dirtyCount,
     pendingCount,
     syncState,
@@ -33,6 +36,14 @@ export default function SinkronView() {
   const [bukaKode, setBukaKode] = useState(false);
   const [bukaKoneksi, setBukaKoneksi] = useState(false);
   const [bukaCadangan, setBukaCadangan] = useState(false);
+  // minggu baru
+  const [sumberGid, setSumberGid] = useState(settings.activeGid);
+  const [namaManual, setNamaManual] = useState<string | null>(null);
+  const [geser, setGeser] = useState(7);
+  const [busyBuat, setBusyBuat] = useState(false);
+  const [hasilBuat, setHasilBuat] = useState<{ ok: boolean; text: string } | null>(null);
+  const [versiSkrip, setVersiSkrip] = useState<string>("");
+  const refBuat = useRef<HTMLDivElement>(null);
   // isian koneksi memakai draf: URL & token yang sudah ada tidak pernah terhapus saat mengetik/keluar kolom
   const [urlDraf, setUrlDraf] = useState(settings.scriptUrl);
   const [tokenDraf, setTokenDraf] = useState(settings.token);
@@ -41,6 +52,27 @@ export default function SinkronView() {
     setUrlDraf(settings.scriptUrl);
     setTokenDraf(settings.token);
   }, [settings.scriptUrl, settings.token]);
+
+  // sumber template: tab aktif atau tab lain yang sudah terbaca di perangkat ini
+  const sumberWeek = weeks[sumberGid] ?? (sumberGid === settings.activeGid ? week : null);
+  const dasar = sumberWeek ?? week;
+  const saranNama = useMemo(() => (dasar ? saranNamaMinggu(dasar, geser) : ""), [dasar, geser]);
+  const namaBaru = namaManual ?? saranNama;
+  const rentangBaru = useMemo(() => (sumberWeek ? rentangSetelahGeser(sumberWeek.dates, geser) : null), [sumberWeek, geser]);
+
+  // Bila tab yang aktif berganti (mis. setelah tab baru dibuat), saran nama ikut menyesuaikan.
+  useEffect(() => {
+    setSumberGid(settings.activeGid);
+    setNamaManual(null);
+  }, [settings.activeGid]);
+
+  // Tombol "Minggu baru" di bilah atas membuka bagian ini langsung.
+  useEffect(() => {
+    if (params.get("buat")) {
+      const t = window.setTimeout(() => refBuat.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+      return () => window.clearTimeout(t);
+    }
+  }, [params]);
 
   const blok = useMemo(() => (week ? blokSalin(week) : []), [week]);
   if (!week) return <StateGate />;
@@ -95,6 +127,7 @@ export default function SinkronView() {
     try {
       const r = await tesScript(settings.scriptUrl);
       if (r.ok) {
+        setVersiSkrip(r.versi ?? "");
         setHasil({ ok: true, text: `Terhubung ke “${r.nama}” (skrip v${r.versi ?? "?"}) · ${r.tabs?.length ?? 0} tab.` });
         if (r.tabs?.length) setSettings({ extraTabs: r.tabs.filter((t) => !t.name.startsWith("_")) });
       } else setHasil({ ok: false, text: "Skrip merespons, tetapi tidak valid." });
@@ -102,6 +135,48 @@ export default function SinkronView() {
       setHasil({ ok: false, text: "Tidak bisa terhubung. Pastikan URL berakhiran /exec dan akses “Siapa saja”." });
     }
     setBusy("");
+  };
+
+  const buatMinggu = async () => {
+    const nama = namaBaru.replace(/\s+/g, " ").trim();
+    if (!nama) {
+      setHasilBuat({ ok: false, text: "Isi nama tab baru dulu." });
+      return;
+    }
+    if (tabs.some((t) => t.name.trim().toLowerCase() === nama.toLowerCase())) {
+      setHasilBuat({ ok: false, text: `Tab “${nama}” sudah ada. Pakai nama lain, mis. ${saranNama}.` });
+      return;
+    }
+    setBusyBuat(true);
+    setHasilBuat(null);
+    const r = await buatMingguBaru({ nama, sumberGid, geserHari: geser });
+    if (!r.ok) {
+      setBusyBuat(false);
+      setHasilBuat({ ok: false, text: r.error ?? "Tab baru gagal dibuat." });
+      return;
+    }
+    // segarkan daftar tab langsung dari skrip (urutan & nama sama dengan sheet)
+    try {
+      const ping = await tesScript(settings.scriptUrl);
+      if (ping.versi) setVersiSkrip(ping.versi);
+      if (ping.ok && ping.tabs?.length) {
+        const daftar = ping.tabs.filter((t) => !t.name.startsWith("_"));
+        // daftar dari skrip bisa saja belum memuat tab yang baru dibuat — jangan sampai hilang
+        if (!daftar.some((t) => t.gid === r.gid)) daftar.unshift({ name: r.nama ?? nama, gid: String(r.gid) });
+        setSettings({ extraTabs: daftar });
+      }
+    } catch {
+      /* daftar tab lokal sudah diperbarui; abaikan */
+    }
+    setBusyBuat(false);
+    setNamaManual(null);
+    setHasilBuat({
+      ok: true,
+      text:
+        `Tab “${r.nama}” dibuat di spreadsheet: struktur minggu sebelumnya disalin, isian dikosongkan, tanggal digeser ${geser ? `+${geser} hari` : "tidak (sama)"}. ` +
+        (r.terbaca === false ? "Isinya belum terbaca dari sheet — tekan “Muat ulang dari Sheet” sebentar lagi." : "Aplikasi sudah pindah ke tab itu."),
+    });
+    toast(`Tab “${r.nama}” dibuat`);
   };
 
   const kirimSekarang = async () => {
@@ -298,7 +373,197 @@ export default function SinkronView() {
         </div>
       </Card>
 
+      {/* minggu baru */}
+      <div ref={refBuat} id="minggu-baru" className="scroll-mt-24">
+        <Card className="p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-brand-soft text-brand">
+                <I.cal className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="text-[16px] font-bold">Minggu baru</h2>
+                <p className="mt-0.5 max-w-[620px] text-[12.5px] leading-relaxed text-muted">
+                  Buat tab minggu berikutnya <b className="text-ink">di dalam spreadsheet</b>: struktur, judul, dan nama tim
+                  disalin dari tab yang dipilih — isian laporan, presensi, dan tautan bukti dikosongkan.
+                </p>
+              </div>
+            </div>
+            <Pill tone="brand">Tab aktif: {week.tab}</Pill>
+          </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_290px]">
+            <div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-[12px] font-semibold text-muted" htmlFor="sumber-minggu">
+                    Salin struktur dari tab
+                  </label>
+                  <select
+                    id="sumber-minggu"
+                    value={sumberGid}
+                    onChange={(e) => {
+                      setSumberGid(e.target.value);
+                      setNamaManual(null);
+                      setHasilBuat(null);
+                    }}
+                    className="mt-1.5 h-11 w-full rounded-xl border border-line bg-white px-3 text-[13px] font-semibold outline-none transition focus:border-brand"
+                  >
+                    {tabs.map((t) => (
+                      <option key={t.gid} value={t.gid}>
+                        Tab {t.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[11.5px] text-muted">
+                    {sumberWeek?.dates.length
+                      ? `${sumberWeek.dates.length} tanggal · ${sumberWeek.dates[0]} – ${sumberWeek.dates[sumberWeek.dates.length - 1]}`
+                      : "Isi tab ini belum terbaca di perangkat ini."}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-[12px] font-semibold text-muted" htmlFor="nama-minggu">
+                    Nama tab baru
+                  </label>
+                  <input
+                    id="nama-minggu"
+                    value={namaBaru}
+                    onChange={(e) => setNamaManual(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && terpasang && !busyBuat) {
+                        e.preventDefault();
+                        void buatMinggu();
+                      }
+                    }}
+                    placeholder="cth. Nov II"
+                    className="mt-1.5 h-11 w-full rounded-xl border border-line bg-white px-3 text-[13px] font-semibold outline-none transition focus:border-brand"
+                  />
+                  <p className="mt-1 flex items-center gap-1.5 text-[11.5px] text-muted">
+                    Saran otomatis
+                    {namaManual !== null && namaBaru !== saranNama && (
+                      <button type="button" onClick={() => setNamaManual(null)} className="font-semibold text-brand underline-offset-2 hover:underline">
+                        pakai “{saranNama}”
+                      </button>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <p className="text-[12px] font-semibold text-muted">Tanggal di tab baru</p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  {[
+                    { v: 7, label: "+7 hari (minggu berikutnya)" },
+                    { v: 0, label: "Biarkan sama" },
+                  ].map((o) => (
+                    <button
+                      key={o.v}
+                      type="button"
+                      onClick={() => setGeser(o.v)}
+                      className={cx(
+                        "rounded-xl border px-3 py-2 text-[12.5px] font-semibold transition-colors",
+                        geser === o.v ? "border-brand bg-brand-soft text-brand" : "border-line bg-white text-muted hover:bg-paper",
+                      )}
+                    >
+                      {geser === o.v ? <I.check className="mr-1 inline h-3.5 w-3.5" /> : null}
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+                {rentangBaru && (
+                  <p className="mt-1.5 text-[11.5px] text-muted">
+                    Tanggal pada tab baru:{" "}
+                    <b className="text-ink">
+                      {rentangBaru.dari === rentangBaru.sampai ? rentangBaru.dari : `${rentangBaru.dari} – ${rentangBaru.sampai}`}
+                    </b>
+                    {geser === 0 && " (sama seperti tab sumber)"}
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <Btn variant="brand" onClick={() => void buatMinggu()} disabled={!terpasang || busyBuat || !namaBaru.trim()}>
+                  {busyBuat ? <Spinner /> : <I.plus className="h-4 w-4" />}
+                  {busyBuat ? "Membuat tab…" : "Buat tab minggu baru"}
+                </Btn>
+                <a href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit`} target="_blank" rel="noreferrer">
+                  <Btn variant="ghost" size="sm">
+                    <I.sheet className="h-4 w-4 text-brand" /> Lihat spreadsheet
+                  </Btn>
+                </a>
+              </div>
+
+              {!terpasang && (
+                <div className="mt-3 rounded-xl bg-warn-soft p-3 text-[12px] leading-relaxed text-warn">
+                  <b>Butuh koneksi Apps Script.</b> Isi URL Web App & token di bagian Koneksi di bawah, lalu buat tab dari sini.
+                  Sementara itu, buat manual: klik kanan tab minggu terakhir di Google Sheet → <b>Duplikat</b> → ganti nama →
+                  hapus isian uraian, presensi, dan tautan.
+                </div>
+              )}
+
+              {terpasang && versiSkrip && versiSkrip !== SCRIPT_VERSI && (
+                <div className="mt-3 flex flex-wrap items-start gap-2.5 rounded-xl bg-warn-soft p-3 text-[12px] leading-relaxed text-warn">
+                  <I.alert className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span className="min-w-[200px] flex-1">
+                    Skrip di spreadsheet masih v{versiSkrip}. Fitur tab baru butuh v{SCRIPT_VERSI} — salin ulang kode di bagian
+                    Koneksi, lalu <b>Terapkan → Kelola deployment → Edit → Versi baru</b>.
+                  </span>
+                  <Btn
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setBukaKoneksi(true);
+                      window.setTimeout(
+                        () => document.getElementById("koneksi-apps-script")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                        80,
+                      );
+                    }}
+                  >
+                    Perbarui skrip
+                  </Btn>
+                </div>
+              )}
+
+              {hasilBuat && (
+                <div
+                  className={cx(
+                    "anim-pop mt-3 flex items-start gap-2.5 rounded-xl p-3 text-[12.5px] leading-relaxed",
+                    hasilBuat.ok ? "bg-brand-soft text-[#0b5e42]" : "bg-bad-soft text-bad",
+                  )}
+                >
+                  {hasilBuat.ok ? <I.check className="mt-0.5 h-4 w-4 shrink-0" /> : <I.alert className="mt-0.5 h-4 w-4 shrink-0" />}
+                  <span>{hasilBuat.text}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl bg-paper p-3.5 text-[11.5px] leading-relaxed text-muted">
+              <p className="text-[12px] font-bold text-ink">Yang tetap &amp; yang kosong</p>
+              <ul className="mt-2 space-y-1.5">
+                <li className="flex gap-1.5">
+                  <I.check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand" />
+                  <span>Judul bagian, judul kolom, nama tim, format &amp; lebar kolom, rumus, dan tabel realisasi anggaran.</span>
+                </li>
+                <li className="flex gap-1.5">
+                  <I.x className="mt-0.5 h-3.5 w-3.5 shrink-0 text-bad" />
+                  <span>Uraian kegiatan &amp; rencana, tautan bukti dukung, angka kehadiran, dan aplikasi presensi.</span>
+                </li>
+                <li className="flex gap-1.5">
+                  <I.cal className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand" />
+                  <span>Tanggal kolom A/C/P digeser {geser ? "+7 hari" : "0 hari"}; baris lain tidak diubah.</span>
+                </li>
+              </ul>
+              <p className="mt-2.5 border-t border-line pt-2.5">
+                Tab baru diletakkan tepat di samping tab sumber, dan tab lain di spreadsheet tidak tersentuh.
+              </p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
       {/* koneksi */}
+      <div id="koneksi-apps-script" className="scroll-mt-24">
       <Card className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -344,7 +609,7 @@ export default function SinkronView() {
 
               <div className="mt-3 overflow-hidden rounded-xl border border-line">
                 <div className="flex items-center justify-between border-b border-line bg-paper px-3 py-2">
-                  <span className="font-mono text-[11.5px] text-muted">Kode.gs · v1.3 · {APPS_SCRIPT.split("\n").length} baris</span>
+                  <span className="font-mono text-[11.5px] text-muted">Kode.gs · v{SCRIPT_VERSI} · {APPS_SCRIPT.split("\n").length} baris</span>
                   <div className="flex gap-1.5">
                     <Btn variant="ghost" size="sm" onClick={() => setBukaKode((v) => !v)}>
                       {bukaKode ? "Sembunyikan" : "Lihat kode"}
@@ -476,6 +741,7 @@ export default function SinkronView() {
           </div>
         )}
       </Card>
+      </div>
 
       {/* aktivitas */}
       <Card className="p-5">

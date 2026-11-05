@@ -24,6 +24,25 @@ Satu sel lampiran per tim/per minggu bisa memuat **lebih dari satu tautan**:
 - Menempel beberapa tautan sekaligus (baris baru, spasi, atau koma) langsung dipecah dan dirapikan.
 - Membaca ulang dari sheet tetap mengenali format bernomor, sehingga sinkron tidak menghapus isi lama.
 
+### Minggu baru (tab minggu berikutnya)
+
+Menu **Sinkronisasi → Minggu baru** (atau tombol **+ Minggu baru** di bilah atas) membuat tab baru
+di spreadsheet tanpa membuka Google Sheets:
+
+- **Struktur disalin** dari tab yang dipilih: judul bagian, judul kolom, nama tim, format, lebar kolom,
+  rumus, dan tabel realisasi anggaran — jadi tampilannya identik dengan minggu sebelumnya.
+- **Isian dikosongkan**: uraian kegiatan (A), rencana (B), tautan bukti dukung (J), angka kehadiran (C),
+  serta angka aplikasi presensi. Baris, tim, dan judul tidak dihapus.
+- **Tanggal digeser +7 hari** (kolom Tanggal bagian A/C/P dan rentang tanggal di baris judul) sehingga
+  tab baru langsung berisi tanggal minggu berikutnya. Pilihan “Biarkan sama” mempertahankan tanggal lama.
+- **Nama tab disarankan otomatis** dari tanggal terakhir (mis. `Nov I` → `Nov II`), masih bisa diubah.
+- Tab baru diletakkan tepat di samping tab sumber; tab lain tidak disentuh. Setelah dibuat, aplikasi
+  otomatis pindah ke tab itu dan isian berikutnya langsung masuk ke tab baru.
+
+Fitur ini memakai aksi `buatTab` pada Apps Script **v1.4**. Bila skrip di spreadsheet masih v1.3,
+aplikasi menampilkan peringatan: salin ulang kode dari menu Sinkronisasi, lalu
+**Terapkan → Kelola deployment → Edit → Versi baru** (URL `/exec` tidak berubah).
+
 ## Penyiapan sekali saja
 
 1. Buka spreadsheet → **Ekstensi → Apps Script**, tempel kode dari menu **Sinkronisasi → Salin kode**
@@ -38,7 +57,9 @@ saat data mingguan diperbarui, sheet dimuat ulang, aplikasi versi baru dibuka, a
 Mengosongkan kolom URL/token juga tidak menghapus koneksi — pemutusan hanya lewat tombol **Putuskan koneksi**.
 
 Skrip membaca posisi kolom dari baris judul dan mencari baris berdasarkan **tim + tanggal**, sehingga aman
-bila ada baris/kolom yang disisipkan. Setiap kiriman dicatat di tab tersembunyi `_audit`.
+bila ada baris/kolom yang disisipkan. Kolom lampiran dikenali dari judul kolomnya (cadangan: kolom pertama
+yang berisi tautan), jadi tab baru yang masih kosong tetap ditulisi di kolom yang benar. Setiap kiriman
+dicatat di tab tersembunyi `_audit`.
 
 ## Pengembangan
 
@@ -55,8 +76,8 @@ dan tujuan tulis (Apps Script Web App).
 
 | Berkas | Isi |
 | --- | --- |
-| `src/lib/model.ts` | Model data tab mingguan, daftar tim, util tanggal & teks |
-| `src/lib/sheet.ts` | Parser CSV tab, penulisan via Apps Script, kode `Kode.gs` siap tempel |
+| `src/lib/model.ts` | Model data tab mingguan, daftar tim, util tanggal & teks, saran nama minggu |
+| `src/lib/sheet.ts` | Parser CSV tab, penulisan & pembuatan tab via Apps Script, kode `Kode.gs` siap tempel |
 | `src/lib/sync.ts` | Mesin sinkron: paket kiriman, penanda terkirim, verifikasi |
 | `src/lib/store.tsx` | State aplikasi + pengatur sinkron otomatis (jeda, ulang, offline) |
 | `src/views/` | Dashboard, Isi laporan, Presensi, Pratinjau, Sinkronisasi |

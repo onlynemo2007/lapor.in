@@ -94,6 +94,7 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
   let tim: string | null = null;
   let sub = "";
   let lampFound = false;
+  let lampHeader = false;
   const firstRow: Record<string, number> = {};
   const lampRaw: Record<string, string[]> = {};
   const cList: { tgl: string; row: number; r: string[] }[] = [];
@@ -125,7 +126,12 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
       const t = has(r, (x) => x === "tim"), g = has(r, (x) => x.startsWith("tanggal")), u = has(r, (x) => x.startsWith("uraian"));
       if (t >= 0 && g >= 0 && u >= 0) {
         Object.assign(c, { tim: t, tgl: g, ur: u });
-        if (!lampFound) c.lamp = u + 5;
+        // kolom lampiran: pakai judul kolomnya bila ada (tab baru belum punya tautan sama sekali)
+        const l = has(r, (x) => /^(link|tautan|lampiran|bukti)/.test(x));
+        if (l > u) {
+          c.lamp = l;
+          lampHeader = true;
+        } else if (!lampFound) c.lamp = u + 5;
         return;
       }
     }
@@ -185,7 +191,7 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
       // tautan lampiran: kolom setelah uraian yang berisi URL
       for (let j = c.ur + 1; j < r.length; j++) {
         if (isLink(r[j])) {
-          if (!lampFound) {
+          if (!lampHeader && !lampFound) {
             c.lamp = j;
             lampFound = true;
           }
@@ -514,6 +520,71 @@ export async function kirimKeScript(url: string, payload: Payload, batasMs = 250
   }
 }
 
+/** Versi kode Apps Script yang disalin dari aplikasi (harus sama dengan `VERSI` di skrip). */
+export const SCRIPT_VERSI = "1.4";
+
+export type BuatTabResult = {
+  ok: boolean;
+  gid?: string;
+  name?: string;
+  versi?: string;
+  /** jumlah sel isian yang dikosongkan */
+  dikosongkan?: number;
+  /** jumlah sel tanggal yang digeser + rentangnya */
+  tanggal?: { jumlah: number; pertama?: string; terakhir?: string };
+  error?: string;
+};
+
+/**
+ * Minta Apps Script membuat tab minggu baru: salinan struktur tab sumber,
+ * isian mingguan dikosongkan, tanggal digeser `geserHari`.
+ */
+export async function buatTabBaru(
+  url: string,
+  token: string,
+  sumberGid: string,
+  nama: string,
+  geserHari: number,
+  oleh = "",
+): Promise<BuatTabResult> {
+  const body = JSON.stringify({ token, aksi: "buatTab", sumberGid, nama, geserHari, oleh });
+  const ctrl = new AbortController();
+  const jam = setTimeout(() => ctrl.abort(), 60000);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      body,
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      redirect: "follow",
+      signal: ctrl.signal,
+    });
+    const teks = await res.text();
+    let data: BuatTabResult;
+    try {
+      data = JSON.parse(teks) as BuatTabResult;
+    } catch {
+      throw new Error(`Balasan skrip tidak dapat dibaca. Perbarui Apps Script ke v${SCRIPT_VERSI} lalu coba lagi.`);
+    }
+    if (!data.gid) {
+      if (data.versi && data.versi !== SCRIPT_VERSI) {
+        return {
+          ok: false,
+          error: `Skrip di spreadsheet masih v${data.versi}. Salin ulang kode v${SCRIPT_VERSI} dari menu Sinkronisasi → Apps Script, lalu Deploy versi baru — setelah itu tab baru bisa dibuat dari aplikasi.`,
+          versi: data.versi,
+        };
+      }
+      return { ok: false, error: data.error ?? "Skrip tidak mengembalikan tab baru.", versi: data.versi };
+    }
+    return { ...data, ok: true };
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") throw new Error("Pembuatan tab melebihi batas waktu. Periksa sheet — bila tab sudah ada, cukup muat ulang daftar tab.");
+    if (e instanceof Error && /Balasan skrip/.test(e.message)) throw e;
+    throw new Error("Tidak bisa menghubungi Apps Script untuk membuat tab baru. Periksa URL Web App & koneksi internet.");
+  } finally {
+    clearTimeout(jam);
+  }
+}
+
 export async function tesScript(url: string): Promise<{ ok: boolean; nama?: string; tabs?: { name: string; gid: string }[]; versi?: string }> {
   const ctrl = new AbortController();
   const jam = setTimeout(() => ctrl.abort(), 15000);
@@ -536,9 +607,12 @@ export const APPS_SCRIPT = `/**
  *
  * Posisi kolom dibaca dari baris judul (No/Tim/Tanggal/Uraian, Kehadiran, Sikepo…),
  * jadi tetap aman bila ada kolom/baris yang disisipkan.
+ *
+ * v1.4 menambah aksi "buatTab": menyalin tab minggu sebelumnya menjadi tab minggu
+ * baru — struktur/judul/nama tim tetap, isian dikosongkan, tanggal digeser +7 hari.
  */
 const TOKEN = 'GANTI-DENGAN-KODE-RAHASIA'; // samakan dengan isian di aplikasi
-const VERSI = '1.3';
+const VERSI = '${SCRIPT_VERSI}';
 
 function doGet(e) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -555,6 +629,7 @@ function doPost(e) {
   try {
     const d = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     if (String(d.token) !== String(TOKEN)) return keluar({ ok: false, error: 'Token tidak cocok dengan yang ada di skrip.' });
+    if (d.aksi === 'buatTab') return buatTab(d);
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sh = cariTab(ss, d.gid);
     if (!sh) return keluar({ ok: false, error: 'Tab dengan gid ' + d.gid + ' tidak ditemukan.' });
@@ -617,7 +692,7 @@ function petakan(sh) {
   const n = s => String(s || '').toLowerCase().replace(/\\s+/g, ' ').trim();
   const cari = (r, f) => r.findIndex(x => f(n(x)));
   const timDari = s => n(s).split(' ')[0];
-  let sec = '', tim = '', sub = '', lampFound = false;
+  let sec = '', tim = '', sub = '', lampFound = false, lampHeader = false;
 
   for (let i = 0; i < v.length; i++) {
     const r = v[i], row = i + 1, cell = j => String(r[j] || '').trim();
@@ -631,13 +706,20 @@ function petakan(sh) {
 
     if (sec === 'A') {
       const t = cari(r, x => x === 'tim'), g = cari(r, x => x.indexOf('tanggal') === 0), u = cari(r, x => x.indexOf('uraian') === 0);
-      if (t >= 0 && g >= 0 && u >= 0) { c.tim = t; c.tgl = g; c.ur = u; if (!lampFound) c.lamp = u + 5; continue; }
+      if (t >= 0 && g >= 0 && u >= 0) {
+        c.tim = t; c.tgl = g; c.ur = u;
+        // kolom lampiran dibaca dari judul kolomnya (tab baru belum punya tautan)
+        const lk = cari(r, x => /^(link|tautan|lampiran|bukti)/.test(x));
+        if (lk > u) { c.lamp = lk; lampHeader = true; }
+        else if (!lampFound) c.lamp = u + 5;
+        continue;
+      }
       const T = cell(c.tim), G = n(cell(c.tgl));
       if (T && n(T) !== 'tim') { tim = timDari(T); sub = ''; }
       if (!tim) continue;
       if (G === 'program' || G === 'monev') sub = G;
       for (let j = c.ur + 1; j < r.length; j++) {
-        if (/https?:\\/\\//i.test(r[j])) { if (!lampFound) { c.lamp = j; lampFound = true; } break; }
+        if (/https?:\\/\\//i.test(r[j])) { if (!lampHeader && !lampFound) { c.lamp = j; lampFound = true; } break; }
       }
       if (tim === 'program' && !sub && tglRe.test(G)) sub = 'program';
       if (tglRe.test(G)) {
@@ -688,6 +770,190 @@ function catat(sh, oleh, n, gagal) {
     log.hideSheet();
   }
   log.appendRow([new Date(), oleh || '-', sh.getName(), n + ' sel', gagal ? gagal + ' baris tidak ditemukan' : 'otomatis']);
+}
+
+/* ------------------- tab minggu baru (permintaan: buatTab) ------------------- */
+
+/**
+ * Salin tab sumber menjadi tab minggu baru:
+ * judul, nama tim, dan baris tetap — isian mingguan dikosongkan, tanggal digeser.
+ */
+function buatTab(d) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sumber = cariTab(ss, d.sumberGid);
+  if (!sumber) return keluar({ ok: false, versi: VERSI, error: 'Tab sumber tidak ditemukan. Muat ulang daftar tab lalu coba lagi.' });
+
+  const nama = String(d.nama || '').replace(/\\s+/g, ' ').trim();
+  if (!nama) return keluar({ ok: false, versi: VERSI, error: 'Nama tab baru belum diisi.' });
+  if (nama.length > 90) return keluar({ ok: false, versi: VERSI, error: 'Nama tab terlalu panjang (maksimal 90 huruf).' });
+  if (nama.charAt(0) === '_') return keluar({ ok: false, versi: VERSI, error: 'Nama tab tidak boleh diawali garis bawah (_).' });
+  if (ss.getSheetByName(nama)) return keluar({ ok: false, versi: VERSI, error: 'Tab "' + nama + '" sudah ada. Pakai nama lain.' });
+
+  const m = petakan(sumber);
+  const geser = isNaN(Number(d.geserHari)) ? 7 : Number(d.geserHari);
+
+  const baru = sumber.copyTo(ss);
+  baru.setName(nama);
+  baru.showSheet();
+
+  // 1) kosongkan isian mingguan (uraian & lampiran A, rencana B, nilai C & P)
+  const A1 = function (row, col) { return kolomAbjad(col + 1) + row; };
+  const barisA = unik(nilai(m.A).concat(nilai(m.L)));
+  const barisB = unik(nilai(m.B));
+  const sel = [];
+  barisA.forEach(function (row) {
+    sel.push(A1(row, m.col.ur));
+    if (m.col.lamp >= 0) sel.push(A1(row, m.col.lamp));
+  });
+  barisB.forEach(function (row) { sel.push(A1(row, m.col.bUr)); });
+  m.Cidx.forEach(function (row) {
+    [m.col.cHadir, m.col.cTk, m.col.cDl, m.col.cCuti].forEach(function (c) { sel.push(A1(row, c)); });
+  });
+  m.Pidx.forEach(function (row) {
+    [m.col.pSikepo, m.col.pEp, m.col.pFp, m.col.pTidak, m.col.pCutiDl].forEach(function (c) { sel.push(A1(row, c)); });
+  });
+  const bersih = unik(sel);
+  if (bersih.length) {
+    try {
+      baru.getRangeList(bersih).clearContent();
+    } catch (err) {
+      bersih.forEach(function (a1) { try { baru.getRange(a1).clearContent(); } catch (err2) {} });
+    }
+  }
+
+  // 2) geser tanggal: kolom Tanggal bagian A, C, P + rentang tanggal di judul
+  let nTanggal = 0, pertama = null, terakhir = null;
+  if (geser) {
+    const sasaran = [];
+    barisA.forEach(function (row) { sasaran.push([row, m.col.tgl]); });
+    m.Cidx.forEach(function (row) { sasaran.push([row, m.col.cTgl]); });
+    m.Pidx.forEach(function (row) { sasaran.push([row, m.col.pTgl]); });
+    sasaran.forEach(function (t) {
+      const rg = baru.getRange(t[0], t[1] + 1);
+      const v = rg.getValue();
+      let g = null;
+      if (v instanceof Date) g = new Date(v.getTime());
+      else if (typeof v === 'string') g = tanggalDariTeks(v);
+      if (!g) return;
+      g.setDate(g.getDate() + geser);
+      if (v instanceof Date) rg.setValue(g); else rg.setValue(tulisTanggal(v, g));
+      nTanggal++;
+      if (!pertama || g < pertama) pertama = g;
+      if (!terakhir || g > terakhir) terakhir = g;
+    });
+
+    // geser juga tanggal yang tertulis di baris judul ("LAPORAN MINGGU … 3 - 7 November 2025")
+    const barisJudul = cariJudul(baru);
+    if (barisJudul) {
+      const lebar = baru.getLastColumn();
+      for (let kol = 1; kol <= lebar; kol++) {
+        const rg = baru.getRange(barisJudul, kol);
+        const teks = String(rg.getValue() || '');
+        if (!teks) continue;
+        const teksBaru = geserTanggalTeks(teks, geser);
+        if (teksBaru !== teks) rg.setValue(teksBaru);
+      }
+    }
+  }
+
+  // 3) letakkan di samping tab sumber (biasanya di depan, mengikuti urutan terbaru)
+  const posisi = sumber.getIndex();
+  ss.setActiveSheet(baru);
+  ss.moveActiveSheet(posisi);
+
+  catat(baru, d.oleh, bersih.length, 0);
+  return keluar({
+    ok: true, versi: VERSI, gid: String(baru.getSheetId()), name: baru.getName(),
+    dikosongkan: bersih.length,
+    tanggal: {
+      jumlah: nTanggal,
+      pertama: pertama ? pertama.toISOString() : '',
+      terakhir: terakhir ? terakhir.toISOString() : ''
+    }
+  });
+}
+
+const BULAN_ID = ['januari', 'februari', 'maret', 'april', 'mei', 'juni', 'juli', 'agustus', 'september', 'oktober', 'november', 'desember'];
+
+function nilai(obj) {
+  return Object.keys(obj).map(function (k) { return obj[k]; });
+}
+
+function unik(arr) {
+  const out = [], sudah = {};
+  arr.forEach(function (x) {
+    if (sudah[x]) return;
+    sudah[x] = 1;
+    out.push(x);
+  });
+  return out;
+}
+
+function kolomAbjad(n) {
+  let s = '';
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+function tanggalDariTeks(s) {
+  const m = String(s).replace(/\\s+/g, ' ').trim().match(/^(\\d{1,2})\\s+([A-Za-z]+)\\s+(\\d{4})$/);
+  if (!m) return null;
+  const b = BULAN_ID.indexOf(m[2].toLowerCase());
+  if (b < 0) return null;
+  return new Date(Number(m[3]), b, Number(m[1]));
+}
+
+function namaBulan(asli) {
+  const b = BULAN_ID[BULAN_ID.indexOf(String(asli).toLowerCase())];
+  if (!b) return String(asli);
+  const kapital = String(asli).charAt(0) !== String(asli).charAt(0).toLowerCase();
+  return kapital ? b.charAt(0).toUpperCase() + b.slice(1) : b;
+}
+
+function tulisTanggal(asli, g) {
+  // asli bisa berupa tanggal lengkap ("3 November 2025") atau nama bulan saja ("NOVEMBER")
+  const t = String(asli).replace(/\\s+/g, ' ').trim();
+  const m = t.match(/^\\d{1,2}\\s+([A-Za-z]+)\\s+\\d{4}$/);
+  const kata = m ? m[1] : t;
+  const nama = BULAN_ID.indexOf(kata.toLowerCase()) >= 0 ? namaBulan(kata) : BULAN_ID[g.getMonth()];
+  return g.getDate() + ' ' + nama + ' ' + g.getFullYear();
+}
+
+/** Geser setiap tanggal yang tertulis di sebuah teks ("3 - 7 November 2025" → "10 - 14 November 2025"). */
+function geserTanggalTeks(teks, hari) {
+  return String(teks).replace(/(\\d{1,2})(\\s*[-\\u2013]\\s*(\\d{1,2}))?\\s+([A-Za-z]+)\\s+(\\d{4})/g, function (utuh, d1, rentang, d2, bulan, tahun) {
+    const bi = BULAN_ID.indexOf(String(bulan).toLowerCase());
+    if (bi < 0) return utuh;
+    const maju = function (n) {
+      const x = new Date(Number(tahun), bi, Number(n));
+      x.setDate(x.getDate() + hari);
+      return x;
+    };
+    const a = maju(d1);
+    if (!d2) return tulisTanggal(bulan, a);
+    const b = maju(d2);
+    const pisah = (String(rentang).match(/[-\\u2013]/) || ['-'])[0];
+    if (a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear())
+      return a.getDate() + ' ' + pisah + ' ' + b.getDate() + ' ' + namaBulan(bulan) + ' ' + b.getFullYear();
+    return tulisTanggal(bulan, a) + ' ' + pisah + ' ' + tulisTanggal(bulan, b);
+  });
+}
+
+/** Nomor baris yang memuat judul "LAPORAN MINGGU …". */
+function cariJudul(sh) {
+  const n = Math.min(sh.getLastRow(), 12);
+  if (!n) return 0;
+  const v = sh.getRange(1, 1, n, Math.min(sh.getLastColumn(), 12)).getDisplayValues();
+  for (let i = 0; i < v.length; i++) {
+    for (let j = 0; j < v[i].length; j++) {
+      if (/^laporan minggu/i.test(String(v[i][j]).trim())) return i + 1;
+    }
+  }
+  return 0;
 }
 
 function keluar(o) {
