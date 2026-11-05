@@ -1,0 +1,396 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { setKegiatan, setLampiran, setRencana, useApp } from "../lib/store";
+import { TIMS, type WeekData, hariDari, joinUraian, lampKey, norm, rapikan, slotAda, slotKey, tanggalPendek, timById } from "../lib/model";
+import { go } from "../components/Shell";
+import { Btn, Card, I, Pill, cx, useToast } from "../components/ui";
+import ItemsEditor from "./ItemsEditor";
+import ChatAsisten from "./ChatAsisten";
+import { StateGate } from "./common";
+
+type Mode = "form" | "chat" | "rencana";
+
+export default function IsiView({ params }: { params: URLSearchParams }) {
+  const { week } = useApp();
+  const mode = (["form", "chat", "rencana"].includes(params.get("mode") ?? "") ? params.get("mode") : "form") as Mode;
+
+  if (!week) return <StateGate />;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-[13px] font-medium text-muted">{mode === "rencana" ? week.judulRencana || "Bagian B" : week.judulKegiatan || "Bagian A"}</p>
+          <h1 className="mt-1 text-[24px] font-extrabold tracking-tight sm:text-[28px]">Isi laporan</h1>
+        </div>
+        <div className="flex rounded-xl border border-line bg-white p-1">
+          {(
+            [
+              ["form", "Form cepat", I.pen],
+              ["chat", "Asisten chat", I.chat],
+              ["rencana", "Rencana minggu depan", I.flag],
+            ] as const
+          ).map(([m, label, Icon]) => (
+            <button
+              key={m}
+              onClick={() => go("isi", m === "form" ? Object.fromEntries([...params].filter(([k]) => k !== "mode")) : { mode: m })}
+              className={cx(
+                "flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] font-semibold transition",
+                mode === m ? "bg-ink text-white" : "text-muted hover:text-ink",
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              <span className={m === "rencana" ? "hidden sm:inline" : ""}>{label}</span>
+              {m === "rencana" && <span className="sm:hidden">Rencana</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {mode === "form" && <FormKegiatan week={week} params={params} />}
+      {mode === "chat" && <ChatAsisten />}
+      {mode === "rencana" && <FormRencana week={week} />}
+    </div>
+  );
+}
+
+/* ------------------------------- form kegiatan ------------------------------- */
+
+function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParams }) {
+  const { settings, updateWeek } = useApp();
+  const toast = useToast();
+
+  const awal = () => {
+    const t = timById(params.get("tim") ?? "") ?? timById(settings.timUtama) ?? TIMS[0];
+    const ps = params.get("sub") ?? "";
+    const sub = t.subs.includes(ps) ? ps : t.subs[0];
+    const pd = week.dates.find((d) => norm(d) === norm(params.get("d") ?? ""));
+    const d = pd ?? week.dates.find((x) => !week.kegiatan[slotKey(t.id, sub, x)]) ?? week.dates[0];
+    return { tim: t.id as string, sub, d };
+  };
+
+  const [slot, setSlot] = useState(awal);
+  const key = slotKey(slot.tim, slot.sub, slot.d);
+  const lk = lampKey(slot.tim, slot.sub);
+  const [items, setItems] = useState<string[]>(() => week.kegiatan[key] ?? []);
+  const [lamp, setLamp] = useState<string>(() => week.lampiran[lk] ?? "");
+  const [flash, setFlash] = useState(0);
+  const loadedKey = useRef(key);
+
+  // param URL berubah (mis. klik dari dashboard)
+  const pstr = params.toString();
+  useEffect(() => {
+    if (params.get("tim") || params.get("d")) pindah(awal());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pstr]);
+
+  // muat isi saat slot/tab berganti
+  useEffect(() => {
+    setItems(week.kegiatan[key] ?? []);
+    setLamp(week.lampiran[lk] ?? "");
+    loadedKey.current = key;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, week.gid]);
+
+  const tersimpan = week.kegiatan[key] ?? [];
+  const berubah = JSON.stringify(items.map((s) => s.trim()).filter(Boolean)) !== JSON.stringify(tersimpan) || lamp.trim() !== (week.lampiran[lk] ?? "");
+
+  const simpan = (diam = false) => {
+    const bersih = items.map(rapikan).filter(Boolean);
+    const k = loadedKey.current;
+    const [tim, sub] = k.split("|");
+    updateWeek((w) => setLampiran(setKegiatan(w, k, bersih, settings.nama), lampKey(tim, sub), lamp.trim(), settings.nama));
+    setItems(bersih);
+    setFlash((f) => f + 1);
+    if (!diam) toast(bersih.length ? `Tersimpan · ${bersih.length} butir` : "Isian dikosongkan");
+    else toast("Perubahan disimpan otomatis", "info");
+  };
+
+  const pindah = (next: { tim: string; sub: string; d: string }) => {
+    if (berubah) simpan(true);
+    setSlot(next);
+  };
+
+  const tim = timById(slot.tim)!;
+  const idx = week.dates.indexOf(slot.d);
+  const nextDate = week.dates.slice(idx + 1).find((d) => !week.kegiatan[slotKey(slot.tim, slot.sub, d)]) ?? week.dates[idx + 1];
+
+  const simpanLanjut = () => {
+    simpan();
+    if (nextDate) setSlot({ ...slot, d: nextDate });
+  };
+
+  const meta = week.meta[`A:${key}`];
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
+      <Card className="p-5 sm:p-6">
+        {/* tim */}
+        <p className="text-[12px] font-semibold uppercase tracking-wider text-muted">Tim</p>
+        <div className="no-scrollbar -mx-1 mt-2 flex gap-1.5 overflow-x-auto px-1 pb-1">
+          {TIMS.map((t) => {
+            const on = t.id === slot.tim;
+            return (
+              <button
+                key={t.id}
+                onClick={() => {
+                  const sub = t.subs[0];
+                  const d = week.dates.find((x) => !week.kegiatan[slotKey(t.id, sub, x)]) ?? slot.d;
+                  pindah({ tim: t.id, sub, d });
+                }}
+                className={cx(
+                  "flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-[13px] font-semibold transition",
+                  on ? "border-ink bg-ink text-white" : "border-line bg-white text-muted hover:border-[#cfcec8] hover:text-ink",
+                )}
+              >
+                <span className="h-2 w-2 rounded-full" style={{ background: t.tone }} />
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {tim.subs.length > 1 && (
+          <div className="mt-3 flex gap-1.5">
+            {tim.subs.map((s) => (
+              <button
+                key={s}
+                onClick={() => pindah({ ...slot, sub: s })}
+                className={cx(
+                  "rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition",
+                  slot.sub === s ? "bg-brand-soft text-brand" : "bg-paper text-muted hover:text-ink",
+                )}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* hari */}
+        <p className="mt-5 text-[12px] font-semibold uppercase tracking-wider text-muted">Hari</p>
+        <div className="mt-2 grid grid-cols-5 gap-1.5">
+          {week.dates.map((d) => {
+            const k = slotKey(slot.tim, slot.sub, d);
+            const n = (week.kegiatan[k] ?? []).length;
+            const on = d === slot.d;
+            return (
+              <button
+                key={d}
+                onClick={() => pindah({ ...slot, d })}
+                className={cx(
+                  "relative rounded-xl border px-1 py-2.5 text-center transition",
+                  on ? "border-ink bg-ink text-white" : "border-line bg-white hover:border-[#cfcec8]",
+                )}
+              >
+                <span className={cx("block text-[11px] font-semibold", on ? "text-white/70" : "text-muted")}>{hariDari(d).slice(0, 3)}</span>
+                <span className="block text-[14px] font-bold">{tanggalPendek(d)}</span>
+                <span
+                  className={cx(
+                    "absolute right-1.5 top-1.5 h-2 w-2 rounded-full",
+                    week.dirty[`A:${k}`] ? "bg-warn" : n ? "bg-brand" : on ? "bg-white/25" : "bg-[#e3e2dd]",
+                  )}
+                />
+              </button>
+            );
+          })}
+        </div>
+
+        {/* editor */}
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-[16px] font-bold">
+              {hariDari(slot.d)}, {slot.d}
+            </h3>
+            <p className="text-[12.5px] text-muted">
+              {tim.no}. {tim.label}
+              {slot.sub && ` · ${slot.sub}`}
+              {meta && ` · diubah ${meta.oleh} ${new Date(meta.at).toLocaleString("id-ID", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}`}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {week.dirty[`A:${key}`] && <Pill tone="warn">belum dikirim</Pill>}
+            {items.length > 0 && (
+              <Btn variant="soft" size="sm" onClick={() => setItems(items.map(rapikan))} title="Rapikan ejaan & kapitalisasi">
+                <I.wand className="h-3.5 w-3.5" /> Rapikan
+              </Btn>
+            )}
+          </div>
+        </div>
+
+        {!slotAda(week, slot.tim, slot.sub, slot.d) && (
+          <div className="mt-3 flex items-start gap-2.5 rounded-xl bg-warn-soft p-3 text-[12.5px] text-warn">
+            <I.alert className="mt-0.5 h-4 w-4 shrink-0" />
+            Baris {slot.sub || tim.label} · {slot.d} tidak ada di tab {week.tab}, jadi isian ini tidak bisa dikirim ke sheet. Tambahkan barisnya di sheet lalu muat ulang.
+          </div>
+        )}
+
+        <div key={flash} className={cx("mt-3 rounded-2xl", flash > 0 && "anim-flash")}>
+          <ItemsEditor
+            items={items}
+            onChange={setItems}
+            onSubmit={simpanLanjut}
+            autoFocus
+            placeholder={items.length ? "Tambah butir lain…" : "Apa yang dikerjakan hari ini? cth: bikin flyer kuis serasi buat medsos"}
+          />
+        </div>
+
+        <label className="mt-5 block text-[12px] font-semibold uppercase tracking-wider text-muted">
+          Lampiran / tautan Drive <span className="font-medium normal-case tracking-normal">(satu untuk {slot.sub || tim.label} minggu ini · kolom J)</span>
+        </label>
+        <div className="mt-2 flex items-center gap-2 rounded-xl border border-line bg-white px-3 transition focus-within:border-brand">
+          <I.link className="h-4 w-4 shrink-0 text-muted" />
+          <input
+            value={lamp}
+            onChange={(e) => setLamp(e.target.value)}
+            placeholder="https://drive.google.com/…"
+            className="h-11 w-full bg-transparent text-[13.5px] outline-none"
+          />
+        </div>
+
+        <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-5">
+          <span className="mr-auto text-[12px] text-muted">{berubah ? "Ada perubahan belum disimpan" : "Semua perubahan tersimpan di perangkat"}</span>
+          <Btn variant="ghost" onClick={() => simpan()} disabled={!berubah}>
+            <I.check className="h-4 w-4" /> Simpan
+          </Btn>
+          {nextDate && (
+            <Btn variant="brand" onClick={simpanLanjut}>
+              Simpan & lanjut {hariDari(nextDate)}
+              <I.arrow className="h-4 w-4" />
+            </Btn>
+          )}
+          {!nextDate && (
+            <Btn variant="brand" onClick={() => { if (berubah) simpan(); go("sinkron"); }}>
+              Simpan & kirim ke sheet
+              <I.send className="h-4 w-4" />
+            </Btn>
+          )}
+        </div>
+      </Card>
+
+      {/* panel samping */}
+      <div className="space-y-4">
+        <Card className="p-4">
+          <p className="text-[12px] font-semibold uppercase tracking-wider text-muted">Pratinjau sel sheet</p>
+          <div className="mt-2 rounded-xl border border-line bg-paper">
+            <div className="flex border-b border-line font-mono text-[10.5px] text-muted">
+              <span className="w-12 border-r border-line px-2 py-1.5">E{week.rows.A[key] ?? "?"}</span>
+              <span className="px-2 py-1.5">Uraian</span>
+            </div>
+            <pre className="max-h-[220px] overflow-auto whitespace-pre-wrap p-3 font-mono text-[12px] leading-relaxed">
+              {joinUraian(items) || <span className="text-[#b9b8b2]">(kosong)</span>}
+            </pre>
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <p className="text-[12px] font-semibold uppercase tracking-wider text-muted">
+            Minggu ini · {slot.sub || tim.label}
+          </p>
+          <ul className="mt-2 space-y-1">
+            {week.dates.map((d) => {
+              const its = week.kegiatan[slotKey(slot.tim, slot.sub, d)] ?? [];
+              const on = d === slot.d;
+              return (
+                <li key={d}>
+                  <button
+                    onClick={() => pindah({ ...slot, d })}
+                    className={cx("w-full rounded-xl px-3 py-2 text-left transition", on ? "bg-brand-soft" : "hover:bg-paper")}
+                  >
+                    <span className="flex items-center justify-between text-[12.5px] font-semibold">
+                      {hariDari(d)} {tanggalPendek(d)}
+                      <span className={cx("text-[11px]", its.length ? "text-brand" : "text-[#b9b8b2]")}>{its.length ? `${its.length} butir` : "kosong"}</span>
+                    </span>
+                    {its[0] && <span className="mt-0.5 line-clamp-1 block text-[11.5px] text-muted">{its[0]}</span>}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+
+        <Card className="bg-paper p-4">
+          <p className="flex items-center gap-2 text-[12.5px] font-semibold">
+            <I.spark className="h-4 w-4 text-brand" /> Tips cepat
+          </p>
+          <ul className="mt-2 space-y-1.5 text-[12px] leading-relaxed text-muted">
+            <li>· Tulis santai: “bikin flyer buat medsos” otomatis jadi “Membuat flyer untuk media sosial”.</li>
+            <li>· <b>Ctrl/⌘ + Enter</b> = simpan & lanjut ke hari berikutnya.</li>
+            <li>· Isian tersimpan di perangkat; kirim ke sheet lewat menu <b>Kirim</b>.</li>
+          </ul>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------- form rencana ------------------------------- */
+
+function FormRencana({ week }: { week: WeekData }) {
+  const { settings, updateWeek } = useApp();
+  const toast = useToast();
+  const urut = useMemo(() => {
+    const u = TIMS.find((t) => t.id === settings.timUtama);
+    return u ? [u, ...TIMS.filter((t) => t.id !== u.id)] : TIMS;
+  }, [settings.timUtama]);
+  const [buka, setBuka] = useState<string>(urut[0].id);
+  const [draft, setDraft] = useState<Record<string, string[]>>({});
+
+  const itemsOf = (id: string) => draft[id] ?? week.rencana[id] ?? [];
+
+  const simpan = (id: string) => {
+    const bersih = itemsOf(id).map(rapikan).filter(Boolean);
+    updateWeek((w) => setRencana(w, id, bersih, settings.nama));
+    setDraft((d) => {
+      const n = { ...d };
+      delete n[id];
+      return n;
+    });
+    toast(`Rencana ${timById(id)?.label} tersimpan`);
+    const i = urut.findIndex((t) => t.id === id);
+    const next = urut.slice(i + 1).find((t) => !(week.rencana[t.id] ?? []).length);
+    if (next) setBuka(next.id);
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[13.5px] text-muted">{week.judulRencana || "Rencana kegiatan minggu berikutnya"} — satu sel per tim di kolom D.</p>
+      {urut.map((t) => {
+        const items = itemsOf(t.id);
+        const on = buka === t.id;
+        const changed = draft[t.id] !== undefined;
+        return (
+          <Card key={t.id} className={cx("overflow-hidden transition", on && "border-[#d3d2cc] shadow-sm")}>
+            <button onClick={() => setBuka(on ? "" : t.id)} className="flex w-full items-center gap-3 px-5 py-4 text-left">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: t.tone }} />
+              <span className="text-[14px] font-bold">
+                <span className="mr-1.5 text-[12px] text-muted">{t.no}</span>
+                {t.label}
+              </span>
+              {week.dirty[`B:${t.id}`] && <Pill tone="warn">belum dikirim</Pill>}
+              <span className={cx("ml-auto text-[12px] font-semibold", items.length ? "text-brand" : "text-[#b9b8b2]")}>
+                {items.length ? `${items.length} rencana` : "kosong"}
+              </span>
+              <I.down className={cx("h-4 w-4 text-muted transition-transform", on && "rotate-180")} />
+            </button>
+            {on && (
+              <div className="anim-fade border-t border-line px-5 pb-5 pt-4">
+                <ItemsEditor
+                  items={items}
+                  onChange={(v) => setDraft((d) => ({ ...d, [t.id]: v }))}
+                  onSubmit={() => simpan(t.id)}
+                  autoFocus
+                  placeholder="Rencana kegiatan minggu depan…"
+                />
+                <div className="mt-4 flex justify-end">
+                  <Btn variant="brand" onClick={() => simpan(t.id)} disabled={!changed}>
+                    <I.check className="h-4 w-4" /> Simpan rencana
+                  </Btn>
+                </div>
+              </div>
+            )}
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
