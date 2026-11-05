@@ -1,5 +1,19 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { DEFAULT_TABS, type Tab, type WeekData, ringkas, type Ringkasan, splitUraian, slotKey, lampKey, norm, SLOT_ROWS, TIMS } from "./model";
+import {
+  DEFAULT_TABS,
+  type Tab,
+  type WeekData,
+  ringkas,
+  type Ringkasan,
+  splitUraian,
+  slotKey,
+  lampKey,
+  norm,
+  normalisasiLinks,
+  samaLinks,
+  SLOT_ROWS,
+  TIMS,
+} from "./model";
 import { fetchWeek, kirimKeScript, mergeWeek } from "./sheet";
 import { jumlahTertunda, siapkanKiriman, tandaiTerkirim, verifikasiKiriman, type SyncLog, type SyncState } from "./sync";
 
@@ -527,9 +541,11 @@ export function setKegiatan(w: WeekData, k: string, items: string[], oleh: strin
 }
 
 export function setLampiran(w: WeekData, k: string, url: string, oleh: string): WeekData {
-  if ((w.lampiran[k] ?? "") === url) return w;
+  // beberapa tautan ditulis bernomor urut, satu tautan apa adanya
+  const isi = normalisasiLinks(url);
+  if (samaLinks(w.lampiran[k] ?? "", isi)) return w;
   const lampiran = { ...w.lampiran };
-  if (url) lampiran[k] = url;
+  if (isi) lampiran[k] = isi;
   else delete lampiran[k];
   return { ...w, lampiran, dirty: { ...w.dirty, [`L:${k}`]: true }, meta: { ...w.meta, [`L:${k}`]: { oleh, at: Date.now() } } };
 }

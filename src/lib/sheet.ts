@@ -15,6 +15,7 @@ import {
   joinUraian,
   lampKey,
   norm,
+  normalisasiLinks,
   parseAngka,
   parsePegawai,
   slotKey,
@@ -434,7 +435,7 @@ export function buildPayload(w: WeekData, token: string, oleh: string, hanyaBeru
     });
     const lk = lampKey(tim.id, sub);
     if (inc(`L:${lk}`) && (w.lampiran[lk] || hanyaBerubah))
-      p.lampiran.push({ tim: tim.id, sub: norm(sub), url: w.lampiran[lk] ?? "" });
+      p.lampiran.push({ tim: tim.id, sub: norm(sub), url: normalisasiLinks(w.lampiran[lk] ?? "") });
   });
   TIMS.forEach((t) => {
     const items = w.rencana[t.id] ?? [];

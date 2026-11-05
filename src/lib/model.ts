@@ -237,6 +237,47 @@ export function splitUraian(raw: string): string[] {
     .filter(Boolean);
 }
 
+/* --------------------------- tautan lampiran --------------------------- */
+
+/**
+ * Ambil semua tautan dari sel lampiran — bisa satu tautan, beberapa baris,
+ * bernomor ("1. …", "2. …"), atau berderet dipisah spasi/koma.
+ */
+export function splitLinks(raw: string): string[] {
+  const t = (raw ?? "").replace(/\r/g, "");
+  const out: string[] = [];
+  const re = /https?:\/\/[^\s<>"']+/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(t))) {
+    let u = m[0].replace(/[.,;:]+$/, "");
+    // buang tanda kurung penutup yang tidak berpasangan
+    while (u.endsWith(")") && (u.match(/\(/g)?.length ?? 0) < (u.match(/\)/g)?.length ?? 0)) u = u.slice(0, -1);
+    if (!out.some((x) => x.toLowerCase() === u.toLowerCase())) out.push(u);
+  }
+  return out;
+}
+
+/** Susun sel lampiran: satu tautan apa adanya, lebih dari satu diberi nomor urut 1, 2, 3… */
+export function joinLinks(urls: string[]): string {
+  const list = urls.map((u) => u.trim()).filter(Boolean);
+  if (list.length <= 1) return list[0] ?? "";
+  return list.map((u, i) => `${i + 1}. ${u}`).join("\n");
+}
+
+/** Rapikan isi lampiran; teks yang bukan tautan dibiarkan apa adanya. */
+export const normalisasiLinks = (raw: string) => {
+  const urls = splitLinks(raw);
+  return urls.length ? joinLinks(urls) : (raw ?? "").trim();
+};
+
+/** Isi lampiran dianggap sama walau berbeda nomor/format penulisan. */
+export const samaLinks = (a: string, b: string) => {
+  const x = splitLinks(a);
+  const y = splitLinks(b);
+  if (!x.length && !y.length) return (a ?? "").trim() === (b ?? "").trim();
+  return x.length === y.length && x.every((u, i) => u === y[i]);
+};
+
 /** Gabungkan butir menjadi format sel sheet. */
 export const joinUraian = (items: string[]) =>
   items

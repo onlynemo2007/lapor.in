@@ -1,6 +1,20 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { setKegiatan, setLampiran, useApp } from "../lib/store";
-import { TIMS, type Tim, hariDari, joinUraian, lampKey, norm, rapikan, slotKey, tanggalPendek, teksKeButir, timById } from "../lib/model";
+import {
+  TIMS,
+  type Tim,
+  hariDari,
+  joinLinks,
+  joinUraian,
+  lampKey,
+  norm,
+  rapikan,
+  slotKey,
+  splitLinks,
+  tanggalPendek,
+  teksKeButir,
+  timById,
+} from "../lib/model";
 import { go } from "../components/Shell";
 import { I, Logo, cx } from "../components/ui";
 
@@ -176,10 +190,12 @@ export default function ChatAsisten() {
       [
         c.lamp ? (
           <>
-            Tautan lampiran {c.sub || timById(c.tim)?.label} minggu ini sudah ada. Ganti? Tempel tautan baru, atau pilih <b>Pakai yang lama</b>.
+            Link bukti data dukung {c.sub || timById(c.tim)?.label} minggu ini sudah ada{" "}
+            <b>{splitLinks(c.lamp).length}</b> tautan. Tempel tautan baru untuk <b>menambah</b> (yang lama tetap ada),
+            atau pilih <b>Pakai yang lama</b>.
           </>
         ) : (
-          "Ada tautan lampiran (Google Drive)? Tempel di sini, atau Lewati."
+          "Ada link bukti data dukung (Google Drive)? Tempel di sini — boleh beberapa sekaligus, otomatis bernomor. Atau Lewati."
         ),
       ],
       "lampiran",
@@ -187,14 +203,18 @@ export default function ChatAsisten() {
   };
 
   const isiLampiran = (raw: string) => {
-    const url = raw.trim();
-    if (!/^https?:\/\//i.test(url)) {
+    const baru = splitLinks(raw);
+    if (!baru.length) {
       user(raw);
       bot(["Itu bukan tautan. Tempel URL yang diawali https://, atau pilih Lewati."], "lampiran");
       return;
     }
-    user(url);
-    ctx.current.lamp = url;
+    user(baru.join("\n"));
+    const gabung = [...splitLinks(ctx.current.lamp)];
+    baru.forEach((u) => {
+      if (!gabung.some((x) => x.toLowerCase() === u.toLowerCase())) gabung.push(u);
+    });
+    ctx.current.lamp = joinLinks(gabung);
     konfirmasi();
   };
 
@@ -220,7 +240,7 @@ export default function ChatAsisten() {
             </div>
             <div className="grid grid-cols-[84px_1fr]">
               <span className="bg-paper px-2.5 py-1.5 text-muted">Lampiran</span>
-              <span className="truncate px-2.5 py-1.5">{c.lamp || "—"}</span>
+              <span className="whitespace-pre-wrap break-all px-2.5 py-1.5">{c.lamp ? joinLinks(splitLinks(c.lamp)) : "—"}</span>
             </div>
           </div>
         </>,
@@ -334,7 +354,10 @@ export default function ChatAsisten() {
           : [];
       case "lampiran":
         return c.lamp
-          ? [{ label: "Pakai yang lama", primary: true, onPick: () => { user("Pakai yang lama"); konfirmasi(); } }, { label: "Hapus lampiran", onPick: () => { user("Hapus lampiran"); ctx.current.lamp = ""; konfirmasi(); } }]
+          ? [
+              { label: "Pakai yang lama", primary: true, onPick: () => { user("Pakai yang lama"); konfirmasi(); } },
+              { label: "Kosongkan lampiran", onPick: () => { user("Kosongkan lampiran"); ctx.current.lamp = ""; konfirmasi(); } },
+            ]
           : [{ label: "Lewati", primary: true, onPick: () => { user("Lewati"); konfirmasi(); } }];
       case "konfirmasi":
         return [

@@ -1,5 +1,5 @@
 import { useApp } from "../lib/store";
-import { TIMS, TOTAL_PEGAWAI, joinUraian, lampKey, norm, slotKey } from "../lib/model";
+import { TIMS, TOTAL_PEGAWAI, joinUraian, lampKey, norm, slotKey, splitLinks } from "../lib/model";
 import { presensiCells } from "../lib/sheet";
 import { Btn, I } from "../components/ui";
 import { StateGate } from "./common";
@@ -79,9 +79,14 @@ export default function PratinjauView() {
                       )}
                       <td className={`${td} break-all text-[10.5px]`}>
                         {lamp ? (
-                          <a href={lamp} target="_blank" rel="noreferrer" className="text-[#1a5fd0] underline">
-                            {lamp.length > 42 ? `${lamp.slice(0, 42)}…` : lamp}
-                          </a>
+                          <div className="space-y-0.5">
+                            {splitLinks(lamp).map((u, j, arr) => (
+                              <a key={u} href={u} target="_blank" rel="noreferrer" className="block text-[#1a5fd0] underline" title={u}>
+                                {arr.length > 1 ? `${j + 1}. ` : ""}
+                                {u.length > 34 ? `${u.slice(0, 34)}…` : u}
+                              </a>
+                            ))}
+                          </div>
                         ) : null}
                       </td>
                     </tr>

@@ -15,7 +15,16 @@ menyalin blok, tidak perlu menekan tombol “Kirim”.
 - Bila balasan Apps Script tidak bisa dibaca browser, aplikasi memverifikasi ulang ke sheet sebelum
   menandai isian terkirim.
 
-### Penyiapan sekali saja
+### Link bukti data dukung (lampiran)
+
+Satu sel lampiran per tim/per minggu bisa memuat **lebih dari satu tautan**:
+
+- Menambah tautan **tidak menghapus** tautan yang sudah ada di daftar.
+- Bila tautan lebih dari satu, sel ditulis berurutan bernomor `1. … 2. … 3. …`; tautan tunggal ditulis apa adanya.
+- Menempel beberapa tautan sekaligus (baris baru, spasi, atau koma) langsung dipecah dan dirapikan.
+- Membaca ulang dari sheet tetap mengenali format bernomor, sehingga sinkron tidak menghapus isi lama.
+
+## Penyiapan sekali saja
 
 1. Buka spreadsheet → **Ekstensi → Apps Script**, tempel kode dari menu **Sinkronisasi → Salin kode**
    (ubah `TOKEN` di dalam kode menjadi kode rahasia Anda).
