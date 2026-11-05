@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useApp } from "../lib/store";
 import { SPREADSHEET_ID, TIMS } from "../lib/model";
 import { Btn, I, Logo, Spinner, cx } from "./ui";
+import { StatusSinkron } from "./SyncBadge";
 
 export type View = "dashboard" | "isi" | "presensi" | "pratinjau" | "sinkron";
 
@@ -10,7 +11,7 @@ export const NAV: { id: View; label: string; short: string; icon: keyof typeof I
   { id: "isi", label: "Isi Laporan", short: "Isi", icon: "pen" },
   { id: "presensi", label: "Presensi", short: "Presensi", icon: "users" },
   { id: "pratinjau", label: "Pratinjau & Cetak", short: "Pratinjau", icon: "doc" },
-  { id: "sinkron", label: "Kirim ke Sheet", short: "Kirim", icon: "sync" },
+  { id: "sinkron", label: "Sinkronisasi", short: "Sinkron", icon: "sync" },
 ];
 
 /* --------------------------------- routing --------------------------------- */
@@ -43,7 +44,8 @@ export function useRoute() {
 /* --------------------------------- shell --------------------------------- */
 
 export default function Shell({ view, children }: { view: View; children: ReactNode }) {
-  const { settings, setSettings, tabs, week, loadState, reload, dirtyCount } = useApp();
+  const { settings, setSettings, tabs, week, loadState, reload, pendingCount, syncState } = useApp();
+  const gagalSinkron = syncState.status === "error";
   const [editNama, setEditNama] = useState(false);
   const loading = loadState.status === "loading";
 
@@ -74,9 +76,9 @@ export default function Shell({ view, children }: { view: View; children: ReactN
               >
                 <Icon className="h-[18px] w-[18px]" />
                 {n.label}
-                {n.id === "sinkron" && dirtyCount > 0 && (
-                  <span className={cx("ml-auto rounded-full px-2 py-0.5 text-[10.5px] font-bold", on ? "bg-white/20 text-white" : "bg-warn-soft text-warn")}>
-                    {dirtyCount}
+                {n.id === "sinkron" && pendingCount > 0 && (
+                  <span className={cx("ml-auto rounded-full px-2 py-0.5 text-[10.5px] font-bold", gagalSinkron ? "bg-bad-soft text-bad" : on ? "bg-white/20 text-white" : "bg-warn-soft text-warn")}>
+                    {pendingCount}
                   </span>
                 )}
               </a>
@@ -134,7 +136,7 @@ export default function Shell({ view, children }: { view: View; children: ReactN
             <I.down className="pointer-events-none absolute right-3 h-4 w-4 text-muted" />
           </label>
 
-          <p className="hidden min-w-0 truncate text-[12.5px] text-muted md:block">{week?.judul ?? ""}</p>
+          <p className="hidden min-w-0 truncate text-[12.5px] text-muted xl:block">{week?.judul ?? ""}</p>
 
           <div className="ml-auto flex items-center gap-2">
             {loadState.status === "error" && (
@@ -142,15 +144,9 @@ export default function Shell({ view, children }: { view: View; children: ReactN
                 {loadState.error}
               </span>
             )}
-            {dirtyCount > 0 && (
-              <a
-                href="#/sinkron"
-                className="hidden items-center gap-1.5 rounded-xl bg-warn-soft px-3 py-2 text-[12px] font-semibold text-warn transition hover:brightness-95 sm:flex"
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-warn" />
-                {dirtyCount} belum dikirim
-              </a>
-            )}
+            <div className="hidden sm:block">
+              <StatusSinkron />
+            </div>
             <Btn variant="ghost" size="sm" onClick={() => reload()} disabled={loading} className="h-10 px-3" title="Muat ulang dari Google Sheet">
               {loading ? <Spinner /> : <I.refresh className="h-4 w-4" />}
               <span className="hidden sm:inline">{loading ? "Memuat…" : "Muat ulang"}</span>
@@ -164,6 +160,11 @@ export default function Shell({ view, children }: { view: View; children: ReactN
             </button>
           </div>
         </div>
+        {(pendingCount > 0 || syncState.status === "error" || syncState.status === "offline") && (
+          <div className="mx-auto flex max-w-[1180px] px-4 pb-2 sm:hidden lg:px-8">
+            <StatusSinkron ringkas className="max-w-full" />
+          </div>
+        )}
       </header>
 
       <main className="mx-auto max-w-[1180px] px-4 pb-28 pt-6 lg:px-8 lg:pb-12">{children}</main>
@@ -180,9 +181,9 @@ export default function Shell({ view, children }: { view: View; children: ReactN
                   <Icon className="h-[19px] w-[19px]" />
                 </span>
                 {n.short}
-                {n.id === "sinkron" && dirtyCount > 0 && (
-                  <span className="absolute right-[calc(50%-22px)] top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-warn px-1 text-[9px] font-bold text-white">
-                    {dirtyCount}
+                {n.id === "sinkron" && pendingCount > 0 && (
+                  <span className={cx("absolute right-[calc(50%-22px)] top-1.5 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[9px] font-bold text-white", gagalSinkron ? "bg-bad" : "bg-warn")}>
+                    {pendingCount}
                   </span>
                 )}
               </a>

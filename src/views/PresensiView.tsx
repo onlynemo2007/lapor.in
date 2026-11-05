@@ -67,7 +67,9 @@ export default function PresensiView() {
       });
       return { ...w, presensi, aplikasi, dirty, meta };
     });
-    toast(`Presensi tersimpan · ${changedP.length + changedA.length} baris`);
+    toast(
+      `Presensi tersimpan · ${changedP.length + changedA.length} baris${settings.scriptUrl && settings.token && settings.autoSync ? " · langsung ke Sheet" : ""}`,
+    );
   };
 
   const otomatis = (k: string) => {
@@ -83,7 +85,10 @@ export default function PresensiView() {
         <div>
           <p className="text-[13px] font-medium text-muted">{week.judulPresensi || "Bagian C"}</p>
           <h1 className="mt-1 text-[24px] font-extrabold tracking-tight sm:text-[28px]">Presensi pegawai</h1>
-          <p className="mt-1 text-[13px] text-muted">Total {TOTAL_PEGAWAI} pegawai (PNS 43 · PPPK 13). Jumlah keempat kolom sebaiknya = {TOTAL_PEGAWAI}.</p>
+          <p className="mt-1 max-w-[620px] text-[13px] leading-relaxed text-muted">
+            Total {TOTAL_PEGAWAI} pegawai (PNS 43 · PPPK 13). Jumlah keempat kolom sebaiknya = {TOTAL_PEGAWAI}. Setelah
+            disimpan, presensi langsung masuk Google Sheet secara otomatis.
+          </p>
         </div>
         <Btn variant="brand" onClick={simpan} disabled={!adaPerubahan}>
           <I.check className="h-4 w-4" />

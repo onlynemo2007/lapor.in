@@ -16,4 +16,14 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
+  // host preview (mis. di lingkungan sandbox) harus boleh mengakses dev server
+  server: {
+    host: "0.0.0.0",
+    port: 5173,
+    allowedHosts: true,
+  },
+  preview: {
+    host: "0.0.0.0",
+    allowedHosts: true,
+  },
 });

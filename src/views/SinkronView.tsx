@@ -1,40 +1,52 @@
 import { useMemo, useState } from "react";
 import { useApp } from "../lib/store";
 import { SPREADSHEET_ID, slotLabel, tanggalPendek, timById } from "../lib/model";
-import { APPS_SCRIPT, blokSalin, buildPayload, kirimKeScript, payloadCount, tesScript } from "../lib/sheet";
+import { APPS_SCRIPT, blokSalin, tesScript } from "../lib/sheet";
+import { jamSinkron, waktuSinkron } from "../lib/sync";
 import { Btn, Card, I, Pill, Spinner, cx, salin, useToast } from "../components/ui";
+import { StatusSinkron } from "../components/SyncBadge";
 import { StateGate } from "./common";
 
-type Opsi = "A" | "B";
-
 export default function SinkronView() {
-  const { week, settings, setSettings, reload, updateWeek, dirtyCount } = useApp();
+  const {
+    week,
+    settings,
+    setSettings,
+    reload,
+    dirtyCount,
+    pendingCount,
+    syncState,
+    syncLog,
+    syncNow,
+    kirimSemua,
+    tandaiManual,
+    hapusLog,
+    tautan,
+    terapkanTautan,
+    buangTautan,
+  } = useApp();
   const toast = useToast();
-  const [opsi, setOpsi] = useState<Opsi>(settings.scriptUrl ? "B" : "A");
   const [copied, setCopied] = useState("");
   const [busy, setBusy] = useState<"" | "tes" | "kirim">("");
   const [hasil, setHasil] = useState<{ ok: boolean; text: string } | null>(null);
-  const [hanyaBerubah, setHanyaBerubah] = useState(true);
-  const [lihatKode, setLihatKode] = useState(false);
+  const [bukaKode, setBukaKode] = useState(false);
+  const [bukaKoneksi, setBukaKoneksi] = useState(false);
+  const [bukaCadangan, setBukaCadangan] = useState(false);
 
   const blok = useMemo(() => (week ? blokSalin(week) : []), [week]);
-  const payload = useMemo(() => (week ? buildPayload(week, settings.token, settings.nama, hanyaBerubah) : null), [week, settings.token, settings.nama, hanyaBerubah]);
+  if (!week) return <StateGate />;
 
-  if (!week || !payload) return <StateGate />;
-
+  const terpasang = !!settings.scriptUrl && !!settings.token;
+  const urlValid = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec/.test(settings.scriptUrl);
   const sheetUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit#gid=${week.gid}`;
 
-  const doCopy = async (id: string, text: string, sel?: string) => {
+  const doCopy = async (id: string, text: string, pesan?: string) => {
     const ok = await salin(text);
     if (ok) {
       setCopied(id);
-      toast(sel ? `Tersalin — tempel di sel ${sel}` : "Tersalin");
-      window.setTimeout(() => setCopied((c) => (c === id ? "" : c)), 2200);
+      toast(pesan ?? "Tersalin");
+      window.setTimeout(() => setCopied((c) => (c === id ? "" : c)), 2400);
     } else toast("Gagal menyalin, izinkan akses clipboard", "err");
-  };
-
-  const tandaiTerkirim = () => {
-    updateWeek((w) => ({ ...w, dirty: {}, syncedAt: Date.now() }));
   };
 
   const tes = async () => {
@@ -45,38 +57,25 @@ export default function SinkronView() {
       const r = await tesScript(settings.scriptUrl);
       if (r.ok) {
         setHasil({ ok: true, text: `Terhubung ke “${r.nama}” (skrip v${r.versi ?? "?"}) · ${r.tabs?.length ?? 0} tab.` });
-        if (r.tabs?.length) {
-          setSettings({ extraTabs: r.tabs.filter((t) => !t.name.startsWith("_")) });
-        }
+        if (r.tabs?.length) setSettings({ extraTabs: r.tabs.filter((t) => !t.name.startsWith("_")) });
       } else setHasil({ ok: false, text: "Skrip merespons, tetapi tidak valid." });
     } catch {
-      setHasil({ ok: false, text: "Tidak bisa terhubung. Periksa URL (harus berakhiran /exec) dan akses “Siapa saja”." });
+      setHasil({ ok: false, text: "Tidak bisa terhubung. Pastikan URL berakhiran /exec dan akses “Siapa saja”." });
     }
     setBusy("");
   };
 
-  const kirim = async () => {
-    if (!settings.scriptUrl || !settings.token) return;
+  const kirimSekarang = async () => {
     setBusy("kirim");
     setHasil(null);
-    try {
-      const r = await kirimKeScript(settings.scriptUrl, payload);
-      if (!r.ok) {
-        setHasil({ ok: false, text: r.error ?? "Gagal menulis ke sheet." });
-      } else {
-        tandaiTerkirim();
-        const gagal = r.gagal?.length ? ` · ${r.gagal.length} tidak ditemukan: ${r.gagal.slice(0, 3).join(", ")}` : "";
-        setHasil({
-          ok: true,
-          text: r.verified ? `Berhasil — ${r.ditulis} sel ditulis ke tab ${week.tab}${gagal}.` : `Terkirim ke Apps Script (balasan tidak dapat dibaca browser). Muat ulang untuk memastikan.`,
-        });
-        toast("Terkirim ke Google Sheet");
-        window.setTimeout(() => reload(), 1500);
-      }
-    } catch {
-      setHasil({ ok: false, text: "Gagal mengirim. Periksa koneksi & URL Web App." });
-    }
+    await syncNow();
     setBusy("");
+    toast("Pengiriman dijalankan — lihat status di atas");
+  };
+
+  const tautanSiapPakai = () => {
+    const isi = btoa(encodeURIComponent(JSON.stringify({ u: settings.scriptUrl, t: settings.token })));
+    return `${window.location.origin}${window.location.pathname}#/sinkron?setup=${encodeURIComponent(isi)}`;
   };
 
   const dirtyList = Object.keys(week.dirty).map((dk) => {
@@ -90,17 +89,15 @@ export default function SinkronView() {
     return { dk, label: tanggalPendek(k), jenis: "Aplikasi presensi" };
   });
 
-  const siapB = !!settings.scriptUrl && !!settings.token;
-
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-[13px] font-medium text-muted">Tab {week.tab}</p>
-          <h1 className="mt-1 text-[24px] font-extrabold tracking-tight sm:text-[28px]">Kirim ke Google Sheet</h1>
-          <p className="mt-1 text-[13px] text-muted">
-            {dirtyCount ? `${dirtyCount} perubahan di perangkat ini belum masuk sheet.` : "Tidak ada perubahan tertunda."}
-            {week.syncedAt && ` Terakhir dikirim ${new Date(week.syncedAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}.`}
+          <h1 className="mt-1 text-[24px] font-extrabold tracking-tight sm:text-[28px]">Sinkronisasi otomatis</h1>
+          <p className="mt-1 max-w-[620px] text-[13px] leading-relaxed text-muted">
+            Setiap isian yang Anda simpan <b className="text-ink">langsung ditulis ke Google Sheet</b> — tanpa menyalin
+            dan tanpa menekan tombol kirim.
           </p>
         </div>
         <a href={sheetUrl} target="_blank" rel="noreferrer">
@@ -110,195 +107,393 @@ export default function SinkronView() {
         </a>
       </div>
 
-      {/* perubahan tertunda */}
-      {dirtyList.length > 0 && (
-        <Card className="p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="mr-1 text-[12.5px] font-semibold text-muted">Belum dikirim:</span>
-            {dirtyList.slice(0, 14).map((d) => (
+      {/* pengaturan dari tautan rekan */}
+      {tautan && (
+        <Card className="anim-pop border-brand/40 bg-brand-soft/60 p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-brand">
+              <I.bolt className="h-5 w-5" />
+            </span>
+            <div className="min-w-[220px] flex-1">
+              <p className="text-[13.5px] font-bold">Tautan berisi pengaturan sinkron</p>
+              <p className="text-[12px] text-muted">Sekali klik, perangkat ini langsung ikut mengirim otomatis ke sheet.</p>
+            </div>
+            <div className="flex gap-2">
+              <Btn variant="ghost" size="sm" onClick={buangTautan}>
+                Nanti
+              </Btn>
+              <Btn variant="brand" size="sm" onClick={terapkanTautan}>
+                <I.check className="h-3.5 w-3.5" /> Aktifkan
+              </Btn>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* status & kontrol */}
+      <Card className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <span
+              className={cx(
+                "grid h-11 w-11 shrink-0 place-items-center rounded-2xl",
+                syncState.status === "error" ? "bg-bad-soft text-bad" : terpasang && settings.autoSync ? "bg-brand-soft text-brand" : "bg-warn-soft text-warn",
+              )}
+            >
+              {syncState.status === "sending" ? <Spinner className="h-5 w-5" /> : <I.bolt className="h-5 w-5" />}
+            </span>
+            <div>
+              <p className="text-[15.5px] font-bold">
+                {!terpasang
+                  ? "Sinkron otomatis belum aktif"
+                  : !settings.autoSync
+                    ? "Sinkron otomatis dimatikan"
+                    : syncState.status === "error"
+                      ? "Pengiriman gagal"
+                      : syncState.status === "offline"
+                        ? "Menunggu koneksi"
+                        : "Sinkron otomatis aktif"}
+              </p>
+              <p className="mt-0.5 max-w-[520px] text-[12.5px] leading-relaxed text-muted">
+                {!terpasang
+                  ? "Pasang jembatan Apps Script satu kali (langkah di bawah), lalu isian Anda langsung masuk sheet."
+                  : settings.autoSync
+                    ? "Isian dikirim ±1 detik setelah disimpan. Bila koneksi putus, isian tersimpan dan dikirim ulang otomatis."
+                    : "Isian hanya tersimpan di perangkat ini sampai Anda menekan “Sinkronkan sekarang”."}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <StatusSinkron />
+                {pendingCount > 0 && <Pill tone="warn">{pendingCount} isian tertunda</Pill>}
+                {syncState.at && <Pill>Terakhir {waktuSinkron(syncState.at)}</Pill>}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 rounded-2xl border border-line px-4 py-3">
+            <div>
+              <p className="text-[12.5px] font-bold">Kirim otomatis</p>
+              <p className="text-[11px] text-muted">tanpa menekan tombol</p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={settings.autoSync}
+              onClick={() => setSettings({ autoSync: !settings.autoSync })}
+              className={cx(
+                "relative h-7 w-12 shrink-0 rounded-full transition-colors",
+                settings.autoSync ? "bg-brand" : "bg-[#dcdbd4]",
+              )}
+              title={settings.autoSync ? "Matikan sinkron otomatis" : "Aktifkan sinkron otomatis"}
+            >
+              <span
+                className={cx(
+                  "absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all",
+                  settings.autoSync ? "left-[22px]" : "left-0.5",
+                )}
+              />
+            </button>
+          </div>
+        </div>
+
+        {syncState.status === "error" && syncState.pesan && (
+          <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-bad-soft p-3 text-[12.5px] leading-relaxed text-bad">
+            <I.alert className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {syncState.pesan}
+              {!!syncState.percobaan && syncState.percobaan <= 4 && " Mencoba ulang otomatis…"}
+            </span>
+          </div>
+        )}
+
+        {!!syncState.gagal?.length && (
+          <div className="mt-4 rounded-xl bg-warn-soft p-3 text-[12.5px] leading-relaxed text-warn">
+            <b>{syncState.gagal.length} baris tidak ditemukan di sheet</b> — biasanya karena tim/tanggal belum ada di tab ini.
+            Tambahkan barisnya di sheet lalu muat ulang. Contoh: {syncState.gagal.slice(0, 3).join(", ")}.
+          </div>
+        )}
+
+        {dirtyList.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="mr-1 text-[12px] font-semibold text-muted">Menunggu dikirim:</span>
+            {dirtyList.slice(0, 12).map((d) => (
               <Pill key={d.dk} tone="warn">
                 {d.jenis} · {d.label}
               </Pill>
             ))}
-            {dirtyList.length > 14 && <Pill>+{dirtyList.length - 14} lagi</Pill>}
+            {dirtyList.length > 12 && <Pill>+{dirtyList.length - 12} lagi</Pill>}
+            {pendingCount > dirtyCount && <Pill>+{pendingCount - dirtyCount} di tab lain</Pill>}
           </div>
-        </Card>
-      )}
+        )}
 
-      {/* pilih opsi */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {(
-          [
-            ["A", "Opsi A · Salin & tempel", "Tanpa setup. Salin blok, tempel ke sel yang ditunjuk.", I.copy],
-            ["B", "Opsi B · Kirim otomatis", "Sekali pasang Apps Script, lalu satu klik langsung masuk sheet.", I.bolt],
-          ] as const
-        ).map(([id, title, desc, Icon]) => (
-          <button
-            key={id}
-            onClick={() => setOpsi(id)}
-            className={cx(
-              "flex items-start gap-3 rounded-2xl border p-4 text-left transition",
-              opsi === id ? "border-ink bg-white shadow-sm ring-1 ring-ink" : "border-line bg-white hover:border-[#cfcec8]",
-            )}
+        <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-4">
+          <Btn variant="brand" onClick={kirimSekarang} disabled={!terpasang || busy !== ""}>
+            {busy === "kirim" ? <Spinner /> : <I.send className="h-4 w-4" />}
+            Sinkronkan sekarang
+          </Btn>
+          <Btn variant="ghost" onClick={() => void reload()} disabled={busy !== ""}>
+            <I.refresh className="h-4 w-4" /> Muat ulang dari Sheet
+          </Btn>
+          <Btn
+            variant="soft"
+            onClick={() => {
+              kirimSemua();
+              toast("Seluruh isian tab ini akan ditulis ulang ke Sheet");
+            }}
+            disabled={!terpasang || busy !== ""}
+            title="Tulis seluruh isian tab ini ke sheet (untuk pemulihan)"
           >
-            <span className={cx("grid h-10 w-10 shrink-0 place-items-center rounded-xl", opsi === id ? "bg-ink text-white" : "bg-paper text-muted")}>
-              <Icon className="h-5 w-5" />
-            </span>
-            <span>
-              <span className="flex items-center gap-2 text-[14.5px] font-bold">
-                {title}
-                {id === "B" && siapB && <Pill tone="brand">terhubung</Pill>}
-              </span>
-              <span className="mt-0.5 block text-[12.5px] text-muted">{desc}</span>
-            </span>
-          </button>
-        ))}
-      </div>
+            <I.sheet className="h-4 w-4" /> Kirim ulang semua isian
+          </Btn>
+          {!terpasang && (
+            <span className="text-[12px] text-warn">Isi URL Web App & token di bawah untuk mengaktifkan.</span>
+          )}
+        </div>
+      </Card>
 
-      {opsi === "A" && (
-        <Card className="p-5">
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      {/* koneksi */}
+      <Card className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-[16px] font-bold">
+              {terpasang ? "Koneksi Apps Script" : "Aktifkan sekali: pasang Apps Script"}
+            </h2>
+            <p className="mt-0.5 max-w-[640px] text-[12.5px] leading-relaxed text-muted">
+              {terpasang
+                ? "Sudah tersambung lewat Web App. Ganti di sini bila alamat deployment berubah."
+                : "Aplikasi ini hanya butuh satu kali penyiapan agar bisa menulis ke spreadsheet Anda."}
+            </p>
+          </div>
+          {terpasang && (
+            <Btn variant="ghost" size="sm" onClick={() => setBukaKoneksi((v) => !v)}>
+              {bukaKoneksi ? "Tutup" : "Ubah koneksi"}
+            </Btn>
+          )}
+        </div>
+
+        {(!terpasang || bukaKoneksi) && (
+          <div className="mt-4 grid gap-5 lg:grid-cols-2">
             <div>
-              <h2 className="text-[16px] font-bold">Salin per blok</h2>
-              <p className="mt-0.5 text-[12.5px] text-muted">
-                Klik <b>Salin</b>, buka sheet, klik sel tujuan, lalu <b>Ctrl/⌘+V</b>. Baris kosong ikut tersalin agar posisi tetap pas.
-              </p>
+              <ol className="space-y-2.5 text-[12.5px] leading-relaxed text-muted">
+                <li>
+                  <b className="text-ink">1.</b> Buka spreadsheet → <b className="text-ink">Ekstensi → Apps Script</b>. Hapus isi
+                  default, tempel kode di bawah.
+                </li>
+                <li>
+                  <b className="text-ink">2.</b> Ganti{" "}
+                  <code className="rounded bg-paper px-1 font-mono text-[11.5px]">GANTI-DENGAN-KODE-RAHASIA</code> dengan kode
+                  buatan Anda, lalu isi kode yang sama di kolom Token.
+                </li>
+                <li>
+                  <b className="text-ink">3.</b> <b className="text-ink">Terapkan → Deployment baru → Aplikasi web</b>. Jalankan
+                  sebagai <b className="text-ink">Saya</b>, akses <b className="text-ink">Siapa saja</b>, lalu Deploy.
+                </li>
+                <li>
+                  <b className="text-ink">4.</b> Tempel URL yang berakhiran{" "}
+                  <code className="rounded bg-paper px-1 font-mono text-[11.5px]">/exec</code> ke kolom di samping — selesai,
+                  sinkron otomatis langsung berjalan.
+                </li>
+              </ol>
+
+              <div className="mt-3 overflow-hidden rounded-xl border border-line">
+                <div className="flex items-center justify-between border-b border-line bg-paper px-3 py-2">
+                  <span className="font-mono text-[11.5px] text-muted">Kode.gs · v1.3 · {APPS_SCRIPT.split("\n").length} baris</span>
+                  <div className="flex gap-1.5">
+                    <Btn variant="ghost" size="sm" onClick={() => setBukaKode((v) => !v)}>
+                      {bukaKode ? "Sembunyikan" : "Lihat kode"}
+                    </Btn>
+                    <Btn
+                      variant={copied === "script" ? "brand" : "primary"}
+                      size="sm"
+                      onClick={() =>
+                        doCopy(
+                          "script",
+                          settings.token ? APPS_SCRIPT.replace("GANTI-DENGAN-KODE-RAHASIA", settings.token) : APPS_SCRIPT,
+                          "Kode tersalin",
+                        )
+                      }
+                    >
+                      {copied === "script" ? <I.check className="h-3.5 w-3.5" /> : <I.copy className="h-3.5 w-3.5" />}
+                      {copied === "script" ? "Tersalin" : "Salin kode"}
+                    </Btn>
+                  </div>
+                </div>
+                {bukaKode && (
+                  <pre className="thin-scroll max-h-[320px] overflow-auto bg-[#151816] p-3 font-mono text-[11px] leading-relaxed text-[#d7e4dc]">{APPS_SCRIPT}</pre>
+                )}
+              </div>
+              {settings.token && <p className="mt-2 text-[11.5px] text-muted">Kode yang disalin sudah berisi token Anda.</p>}
             </div>
+
+            <div>
+              <label className="block text-[12px] font-semibold text-muted">URL Web App</label>
+              <input
+                value={settings.scriptUrl}
+                onChange={(e) => setSettings({ scriptUrl: e.target.value.trim() })}
+                placeholder="https://script.google.com/macros/s/…/exec"
+                className="mt-1.5 h-11 w-full rounded-xl border border-line bg-paper px-3 font-mono text-[12px] outline-none transition focus:border-brand focus:bg-white"
+              />
+              {settings.scriptUrl && !urlValid && (
+                <p className="mt-1 text-[11.5px] text-warn">URL biasanya berakhiran <code className="font-mono">/exec</code>.</p>
+              )}
+
+              <label className="mt-3 block text-[12px] font-semibold text-muted">
+                Token (kode rahasia yang sama dengan di skrip)
+              </label>
+              <input
+                value={settings.token}
+                onChange={(e) => setSettings({ token: e.target.value.trim() })}
+                placeholder="cth. dukman-2026-xyz"
+                className="mt-1.5 h-11 w-full rounded-xl border border-line bg-paper px-3 font-mono text-[12px] outline-none transition focus:border-brand focus:bg-white"
+              />
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Btn variant="ghost" size="sm" onClick={tes} disabled={!settings.scriptUrl || busy !== ""}>
+                  {busy === "tes" ? <Spinner className="h-3.5 w-3.5" /> : <I.bolt className="h-3.5 w-3.5" />}
+                  Tes koneksi
+                </Btn>
+                <Btn
+                  variant={settings.autoSync ? "soft" : "brand"}
+                  size="sm"
+                  onClick={() => setSettings({ autoSync: true })}
+                  disabled={settings.autoSync}
+                >
+                  <I.check className="h-3.5 w-3.5" /> {settings.autoSync ? "Otomatis aktif" : "Aktifkan otomatis"}
+                </Btn>
+              </div>
+
+              {hasil && (
+                <div
+                  className={cx(
+                    "anim-pop mt-3 flex items-start gap-2.5 rounded-xl p-3 text-[12.5px] leading-relaxed",
+                    hasil.ok ? "bg-brand-soft text-[#0b5e42]" : "bg-bad-soft text-bad",
+                  )}
+                >
+                  {hasil.ok ? <I.check className="mt-0.5 h-4 w-4 shrink-0" /> : <I.alert className="mt-0.5 h-4 w-4 shrink-0" />}
+                  {hasil.text}
+                </div>
+              )}
+
+              {terpasang && (
+                <div className="mt-4 rounded-xl border border-line p-3">
+                  <p className="text-[12.5px] font-bold">Bagikan ke rekan setim</p>
+                  <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">
+                    Kirim tautan ini agar perangkat rekan langsung ikut sinkron otomatis — tanpa mengisi apa pun. Tautan berisi
+                    token, jadi bagikan hanya ke tim internal.
+                  </p>
+                  <Btn
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => doCopy("tautan", tautanSiapPakai(), "Tautan siap pakai tersalin")}
+                  >
+                    {copied === "tautan" ? <I.check className="h-3.5 w-3.5" /> : <I.link className="h-3.5 w-3.5" />}
+                    {copied === "tautan" ? "Tersalin" : "Salin tautan siap pakai"}
+                  </Btn>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* aktivitas */}
+      <Card className="p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-[16px] font-bold">Aktivitas sinkronisasi</h2>
+            <p className="mt-0.5 text-[12.5px] text-muted">Riwayat 30 pengiriman terakhir dari perangkat ini.</p>
+          </div>
+          {syncLog.length > 0 && (
+            <Btn variant="ghost" size="sm" onClick={hapusLog}>
+              <I.trash className="h-3.5 w-3.5" /> Bersihkan
+            </Btn>
+          )}
+        </div>
+        {syncLog.length === 0 ? (
+          <p className="rounded-xl bg-paper p-3 text-[12.5px] text-muted">
+            Belum ada pengiriman. Simpan satu isian laporan — pengiriman pertama akan muncul di sini.
+          </p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {syncLog.map((l, i) => (
+              <li key={`${l.at}-${i}`} className="flex items-start gap-3 py-2.5">
+                <span
+                  className={cx(
+                    "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full",
+                    l.ok ? "bg-brand-soft text-brand" : "bg-bad-soft text-bad",
+                  )}
+                >
+                  {l.ok ? <I.check className="h-3.5 w-3.5" /> : <I.alert className="h-3.5 w-3.5" />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12.5px] font-semibold">
+                    {l.ok ? `${l.sel} sel ditulis${l.tab ? ` · tab ${l.tab}` : ""}` : "Gagal mengirim"}
+                    <span className="ml-2 font-normal text-muted">{jamSinkron(l.at)}</span>
+                  </p>
+                  {l.pesan && <p className="text-[11.5px] leading-relaxed text-muted">{l.pesan}</p>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      {/* cadangan: salin-tempel */}
+      <Card className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-[16px] font-bold">Cadangan: salin & tempel manual</h2>
+            <p className="mt-0.5 max-w-[640px] text-[12.5px] leading-relaxed text-muted">
+              Dipakai hanya bila Apps Script belum bisa dipasang. Klik <b>Salin</b>, buka sheet, klik sel tujuan, lalu tempel.
+            </p>
+          </div>
+          <Btn variant="ghost" size="sm" onClick={() => setBukaCadangan((v) => !v)}>
+            {bukaCadangan ? "Tutup" : "Buka cadangan"}
+          </Btn>
+        </div>
+
+        {bukaCadangan && (
+          <div className="mt-3">
+            <ul className="divide-y divide-line">
+              {blok.map((b) => (
+                <li key={b.id} className="flex flex-wrap items-center gap-3 py-3">
+                  <div className="min-w-[180px] flex-1">
+                    <p className="text-[13.5px] font-semibold">{b.judul}</p>
+                    <p className="text-[11.5px] text-muted">
+                      {b.terisi}/{b.baris} baris terisi
+                    </p>
+                  </div>
+                  <span className="rounded-lg bg-paper px-2.5 py-1 font-mono text-[12px] font-semibold">
+                    tempel di <span className="text-brand">{b.sel}</span>
+                  </span>
+                  <Btn
+                    variant={copied === b.id ? "brand" : "ghost"}
+                    size="sm"
+                    onClick={() => doCopy(b.id, b.tsv, `Tersalin — tempel di sel ${b.sel}`)}
+                    disabled={!b.terisi}
+                    className="w-[100px]"
+                  >
+                    {copied === b.id ? <I.check className="h-3.5 w-3.5" /> : <I.copy className="h-3.5 w-3.5" />}
+                    {copied === b.id ? "Tersalin" : "Salin"}
+                  </Btn>
+                </li>
+              ))}
+            </ul>
             {dirtyCount > 0 && (
-              <Btn variant="soft" size="sm" onClick={() => { tandaiTerkirim(); toast("Ditandai sudah ditempel"); }}>
+              <Btn
+                variant="soft"
+                size="sm"
+                className="mt-3"
+                onClick={() => {
+                  tandaiManual();
+                  toast("Ditandai sudah ditempel manual");
+                }}
+              >
                 <I.check className="h-3.5 w-3.5" /> Tandai sudah ditempel
               </Btn>
             )}
           </div>
-          <ul className="divide-y divide-line">
-            {blok.map((b) => (
-              <li key={b.id} className="flex flex-wrap items-center gap-3 py-3">
-                <div className="min-w-[180px] flex-1">
-                  <p className="text-[13.5px] font-semibold">{b.judul}</p>
-                  <p className="text-[11.5px] text-muted">
-                    {b.terisi}/{b.baris} baris terisi
-                  </p>
-                </div>
-                <span className="rounded-lg bg-paper px-2.5 py-1 font-mono text-[12px] font-semibold">
-                  tempel di <span className="text-brand">{b.sel}</span>
-                </span>
-                <Btn variant={copied === b.id ? "brand" : "ghost"} size="sm" onClick={() => doCopy(b.id, b.tsv, b.sel)} disabled={!b.terisi} className="w-[100px]">
-                  {copied === b.id ? <I.check className="h-3.5 w-3.5" /> : <I.copy className="h-3.5 w-3.5" />}
-                  {copied === b.id ? "Tersalin" : "Salin"}
-                </Btn>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 rounded-xl bg-paper p-3 text-[12px] leading-relaxed text-muted">
-            Nomor sel dibaca dari struktur tab saat terakhir dimuat. Jika ada yang menyisipkan baris di sheet, tekan <b>Muat ulang</b> dulu agar posisi sel diperbarui.
-          </p>
-        </Card>
-      )}
-
-      {opsi === "B" && (
-        <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
-          <Card className="p-5">
-            <h2 className="text-[16px] font-bold">1 · Pasang Apps Script (sekali saja)</h2>
-            <ol className="mt-3 space-y-2.5 text-[13px] leading-relaxed text-muted">
-              <li>
-                <b className="text-ink">a.</b> Buka spreadsheet →{" "}
-                <b className="text-ink">Ekstensi → Apps Script</b>. Hapus isi default, tempel kode di bawah.
-              </li>
-              <li>
-                <b className="text-ink">b.</b> Ganti <code className="rounded bg-paper px-1 font-mono text-[11.5px]">GANTI-DENGAN-KODE-RAHASIA</code> dengan kode buatan Anda, lalu isi kode yang sama di kolom Token.
-              </li>
-              <li>
-                <b className="text-ink">c.</b> <b className="text-ink">Terapkan → Deployment baru → Aplikasi web</b>. Jalankan sebagai: <b className="text-ink">Saya</b>. Akses: <b className="text-ink">Siapa saja</b>. Izinkan akses saat diminta.
-              </li>
-              <li>
-                <b className="text-ink">d.</b> Salin URL yang berakhiran <code className="rounded bg-paper px-1 font-mono text-[11.5px]">/exec</code> ke kolom di samping.
-              </li>
-            </ol>
-
-            <div className="mt-4 overflow-hidden rounded-xl border border-line">
-              <div className="flex items-center justify-between border-b border-line bg-paper px-3 py-2">
-                <span className="font-mono text-[11.5px] text-muted">Kode.gs · {APPS_SCRIPT.split("\n").length} baris</span>
-                <div className="flex gap-1.5">
-                  <Btn variant="ghost" size="sm" onClick={() => setLihatKode((v) => !v)}>
-                    {lihatKode ? "Sembunyikan" : "Lihat kode"}
-                  </Btn>
-                  <Btn
-                    variant={copied === "script" ? "brand" : "primary"}
-                    size="sm"
-                    onClick={() => doCopy("script", settings.token ? APPS_SCRIPT.replace("GANTI-DENGAN-KODE-RAHASIA", settings.token) : APPS_SCRIPT)}
-                  >
-                    {copied === "script" ? <I.check className="h-3.5 w-3.5" /> : <I.copy className="h-3.5 w-3.5" />}
-                    {copied === "script" ? "Tersalin" : "Salin kode"}
-                  </Btn>
-                </div>
-              </div>
-              {lihatKode && (
-                <pre className="thin-scroll max-h-[340px] overflow-auto bg-[#151816] p-3 font-mono text-[11px] leading-relaxed text-[#d7e4dc]">{APPS_SCRIPT}</pre>
-              )}
-            </div>
-            {settings.token && <p className="mt-2 text-[11.5px] text-muted">Kode yang disalin sudah berisi token Anda.</p>}
-          </Card>
-
-          <Card className="p-5">
-            <h2 className="text-[16px] font-bold">2 · Hubungkan & kirim</h2>
-            <label className="mt-4 block text-[12px] font-semibold text-muted">URL Web App</label>
-            <input
-              value={settings.scriptUrl}
-              onChange={(e) => setSettings({ scriptUrl: e.target.value.trim() })}
-              placeholder="https://script.google.com/macros/s/…/exec"
-              className="mt-1.5 h-11 w-full rounded-xl border border-line bg-paper px-3 font-mono text-[12px] outline-none transition focus:border-brand focus:bg-white"
-            />
-            <label className="mt-3 block text-[12px] font-semibold text-muted">Token (kode rahasia yang sama dengan di skrip)</label>
-            <input
-              value={settings.token}
-              onChange={(e) => setSettings({ token: e.target.value.trim() })}
-              placeholder="cth. dukman-2026-xyz"
-              className="mt-1.5 h-11 w-full rounded-xl border border-line bg-paper px-3 font-mono text-[12px] outline-none transition focus:border-brand focus:bg-white"
-            />
-            <div className="mt-3 flex gap-2">
-              <Btn variant="ghost" size="sm" onClick={tes} disabled={!settings.scriptUrl || busy !== ""}>
-                {busy === "tes" ? <Spinner className="h-3.5 w-3.5" /> : <I.bolt className="h-3.5 w-3.5" />}
-                Tes koneksi
-              </Btn>
-              {!settings.token && <span className="self-center text-[11.5px] text-warn">Token wajib diisi</span>}
-            </div>
-
-            <div className="mt-5 rounded-xl border border-line p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[13.5px] font-bold">{payloadCount(payload)} sel akan ditulis</p>
-                  <p className="text-[11.5px] text-muted">
-                    {payload.kegiatan.length} kegiatan · {payload.lampiran.length} lampiran · {payload.rencana.length} rencana · {payload.presensi.length + payload.aplikasi.length} presensi
-                  </p>
-                </div>
-              </div>
-              <div className="mt-3 flex rounded-lg bg-paper p-1 text-[12px] font-semibold">
-                <button onClick={() => setHanyaBerubah(true)} className={cx("flex-1 rounded-md py-1.5 transition", hanyaBerubah ? "bg-white shadow-sm" : "text-muted")}>
-                  Hanya yang berubah
-                </button>
-                <button onClick={() => setHanyaBerubah(false)} className={cx("flex-1 rounded-md py-1.5 transition", !hanyaBerubah ? "bg-white shadow-sm" : "text-muted")}>
-                  Semua isian
-                </button>
-              </div>
-              <Btn variant="brand" className="mt-4 w-full" onClick={kirim} disabled={!siapB || busy !== "" || payloadCount(payload) === 0}>
-                {busy === "kirim" ? <Spinner /> : <I.send className="h-4 w-4" />}
-                {busy === "kirim" ? "Mengirim…" : `Kirim ke tab ${week.tab}`}
-              </Btn>
-            </div>
-
-            {hasil && (
-              <div className={cx("anim-pop mt-4 flex items-start gap-2.5 rounded-xl p-3 text-[12.5px] leading-relaxed", hasil.ok ? "bg-brand-soft text-[#0b5e42]" : "bg-bad-soft text-bad")}>
-                {hasil.ok ? <I.check className="mt-0.5 h-4 w-4 shrink-0" /> : <I.alert className="mt-0.5 h-4 w-4 shrink-0" />}
-                {hasil.text}
-              </div>
-            )}
-
-            <p className="mt-4 text-[11.5px] leading-relaxed text-muted">
-              Skrip mencari baris berdasarkan <b>tim + tanggal</b> (bukan nomor baris), jadi aman meski ada baris yang disisipkan. Setiap kiriman dicatat di tab tersembunyi <code className="font-mono">_audit</code>.
-            </p>
-          </Card>
-        </div>
-      )}
+        )}
+      </Card>
     </div>
   );
 }

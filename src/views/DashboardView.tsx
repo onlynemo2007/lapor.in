@@ -6,7 +6,7 @@ import { Btn, Card, I, Pill, Progress, SectionTitle, Spinner, cx } from "../comp
 import { StateGate } from "./common";
 
 export default function DashboardView() {
-  const { week, settings, setSettings, trend, loadTrend, trendLoading, tabs, dirtyCount } = useApp();
+  const { week, settings, setSettings, trend, loadTrend, trendLoading, tabs, pendingCount, syncState } = useApp();
 
   useEffect(() => {
     const have = tabs.slice(0, 6).filter((t) => trend[t.gid]).length;
@@ -53,11 +53,18 @@ export default function DashboardView() {
             {pct === 100
               ? "Semua kolom kegiatan minggu ini sudah terisi."
               : `${r.slotTotal - r.slotTerisi} dari ${r.slotTotal} kolom kegiatan masih kosong.`}
-            {dirtyCount > 0 && (
+            {pendingCount > 0 && (
               <>
                 {" "}
-                <a href="#/sinkron" className="font-semibold text-warn underline-offset-2 hover:underline">
-                  {dirtyCount} perubahan belum dikirim ke sheet →
+                <a
+                  href="#/sinkron"
+                  className={cx("font-semibold underline-offset-2 hover:underline", syncState.status === "error" ? "text-bad" : "text-warn")}
+                >
+                  {syncState.status === "error"
+                    ? `${pendingCount} isian gagal masuk sheet — ulangi →`
+                    : syncState.status === "setup"
+                      ? `${pendingCount} isian menunggu — aktifkan sinkron →`
+                      : `${pendingCount} isian sedang masuk ke sheet…`}
                 </a>
               </>
             )}
@@ -118,7 +125,7 @@ export default function DashboardView() {
                 <span className="h-3 w-3 rounded bg-brand/30" /> terisi
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded ring-2 ring-warn" /> belum dikirim
+                <span className="h-3 w-3 rounded ring-2 ring-warn" /> menunggu sinkron
               </span>
             </div>
           }

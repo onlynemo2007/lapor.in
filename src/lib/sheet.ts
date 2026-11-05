@@ -454,77 +454,155 @@ export function buildPayload(w: WeekData, token: string, oleh: string, hanyaBeru
 export const payloadCount = (p: Payload) =>
   p.kegiatan.length + p.lampiran.length + p.rencana.length + p.presensi.length + p.aplikasi.length;
 
-export type ScriptResult = { ok: boolean; ditulis?: number; gagal?: string[]; error?: string; verified: boolean };
+export type ScriptResult = {
+  ok: boolean;
+  ditulis?: number;
+  gagal?: string[];
+  error?: string;
+  versi?: string;
+  verified: boolean;
+};
 
-export async function kirimKeScript(url: string, payload: Payload): Promise<ScriptResult> {
+const simpul = (e: unknown) =>
+  e instanceof Error && e.name === "AbortError"
+    ? "Koneksi ke Apps Script timeout."
+    : "Tidak bisa menghubungi Apps Script. Periksa URL Web App & koneksi internet.";
+
+/** Kirim paket perubahan ke Apps Script. `verified` = balasan skrip terbaca. */
+export async function kirimKeScript(url: string, payload: Payload, batasMs = 25000): Promise<ScriptResult> {
   const body = JSON.stringify(payload);
+  const ctrl = new AbortController();
+  const jam = setTimeout(() => ctrl.abort(), batasMs);
   try {
-    const res = await fetch(url, { method: "POST", body, redirect: "follow" });
-    const data = await res.json();
-    return { ...data, verified: true };
+    const res = await fetch(url, {
+      method: "POST",
+      body,
+      // text/plain = permintaan sederhana, jadi tidak memicu preflight CORS
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      redirect: "follow",
+      signal: ctrl.signal,
+    });
+    const teks = await res.text();
+    try {
+      const data = JSON.parse(teks);
+      return { ...data, verified: true };
+    } catch {
+      // balasan bukan JSON (mis. halaman login Google) — anggap belum terverifikasi
+      return { ok: res.ok, verified: false, error: "Balasan skrip tidak dapat dibaca." };
+    }
   } catch {
-    // Fallback: kirim tanpa membaca balasan (beberapa browser memblokir redirect Apps Script)
-    await fetch(url, { method: "POST", body, mode: "no-cors" });
-    return { ok: true, verified: false };
+    // Beberapa browser memblokir balasan Apps Script: kirim ulang tanpa membaca balasan
+    // (nilainya idempoten, jadi aman bila ternyata kiriman pertama sudah masuk).
+    try {
+      const ctrl2 = new AbortController();
+      const jam2 = setTimeout(() => ctrl2.abort(), 15000);
+      await fetch(url, {
+        method: "POST",
+        body,
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        signal: ctrl2.signal,
+      });
+      clearTimeout(jam2);
+      return { ok: true, verified: false };
+    } catch (e) {
+      throw new Error(simpul(e));
+    }
+  } finally {
+    clearTimeout(jam);
   }
 }
 
 export async function tesScript(url: string): Promise<{ ok: boolean; nama?: string; tabs?: { name: string; gid: string }[]; versi?: string }> {
-  const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}aksi=ping`, { redirect: "follow" });
-  return res.json();
+  const ctrl = new AbortController();
+  const jam = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}aksi=ping`, { redirect: "follow", signal: ctrl.signal });
+    return await res.json();
+  } finally {
+    clearTimeout(jam);
+  }
 }
 
 export const APPS_SCRIPT = `/**
- * Lapor.in — jembatan tulis ke "Laporan Mingguan Tim Dukman"
- * Pasang: buka spreadsheet → Ekstensi → Apps Script → tempel seluruh kode ini.
- * Deploy: Terapkan → Deployment baru → Jenis: Aplikasi web
- *         Jalankan sebagai: Saya · Yang memiliki akses: Siapa saja
+ * Lapor.in — jembatan tulis OTOMATIS ke "Laporan Mingguan Tim Dukman"
+ * Setiap isian di aplikasi langsung masuk ke sheet, tanpa menyalin/menekan kirim.
+ *
+ * 1. Buka spreadsheet → Ekstensi → Apps Script → hapus isi default → tempel kode ini.
+ * 2. Ganti TOKEN di bawah dengan kode rahasia Anda, samakan dengan kolom Token di aplikasi.
+ * 3. Terapkan → Deployment baru → Jenis: Aplikasi web
+ *    Jalankan sebagai: Saya · Yang memiliki akses: Siapa saja → Deploy → salin URL /exec.
+ *
  * Posisi kolom dibaca dari baris judul (No/Tim/Tanggal/Uraian, Kehadiran, Sikepo…),
  * jadi tetap aman bila ada kolom/baris yang disisipkan.
  */
 const TOKEN = 'GANTI-DENGAN-KODE-RAHASIA'; // samakan dengan isian di aplikasi
-const VERSI = '1.2';
+const VERSI = '1.3';
 
 function doGet(e) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   return keluar({
     ok: true, versi: VERSI, nama: ss.getName(),
-    tabs: ss.getSheets().filter(s => !s.isSheetHidden())
-      .map(s => ({ name: s.getName(), gid: String(s.getSheetId()) }))
+    tabs: ss.getSheets().filter(function (s) { return !s.isSheetHidden(); })
+      .map(function (s) { return { name: s.getName(), gid: String(s.getSheetId()) }; })
   });
 }
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  if (!lock.tryLock(25000)) return keluar({ ok: false, error: 'Sheet sedang ditulis proses lain. Coba lagi.' });
   try {
-    const d = JSON.parse(e.postData.contents);
-    if (d.token !== TOKEN) return keluar({ ok: false, error: 'Token tidak cocok.' });
-    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheets()
-      .find(s => String(s.getSheetId()) === String(d.gid));
+    const d = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    if (String(d.token) !== String(TOKEN)) return keluar({ ok: false, error: 'Token tidak cocok dengan yang ada di skrip.' });
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sh = cariTab(ss, d.gid);
     if (!sh) return keluar({ ok: false, error: 'Tab dengan gid ' + d.gid + ' tidak ditemukan.' });
 
     const m = petakan(sh), k = m.col;
     let n = 0; const gagal = [];
-    const tulis = (row, cols, vals, label) => {
+    const tulis = function (row, cols, vals, label) {
       if (!row) { gagal.push(label); return; }
-      cols.forEach((c, i) => sh.getRange(row, c + 1).setValue(vals[i]));
-      n++;
+      n += tulisBaris(sh, row, cols, vals);
     };
 
-    (d.kegiatan || []).forEach(x => tulis(m.A[x.tim + '|' + x.sub + '|' + x.tanggal], [k.ur], [x.uraian], 'kegiatan ' + x.tim + ' ' + x.tanggal));
-    (d.lampiran || []).forEach(x => tulis(m.L[x.tim + '|' + x.sub], [k.lamp], [x.url], 'lampiran ' + x.tim));
-    (d.rencana  || []).forEach(x => tulis(m.B[x.tim], [k.bUr], [x.uraian], 'rencana ' + x.tim));
-    (d.presensi || []).forEach(x => tulis(m.C[x.tanggal] || m.Cidx[x.idx], [k.cHadir, k.cTk, k.cDl, k.cCuti], x.nilai, 'presensi ' + x.tanggal));
-    (d.aplikasi || []).forEach(x => tulis(m.P[x.tanggal] || m.Pidx[x.idx], [k.pSikepo, k.pEp, k.pFp, k.pTidak, k.pCutiDl], x.nilai, 'aplikasi ' + x.tanggal));
+    (d.kegiatan || []).forEach(function (x) { tulis(m.A[x.tim + '|' + x.sub + '|' + x.tanggal], [k.ur], [x.uraian], 'kegiatan ' + x.tim + ' ' + x.tanggal); });
+    (d.lampiran || []).forEach(function (x) { tulis(m.L[x.tim + '|' + x.sub], [k.lamp], [x.url], 'lampiran ' + x.tim); });
+    (d.rencana || []).forEach(function (x) { tulis(m.B[x.tim], [k.bUr], [x.uraian], 'rencana ' + x.tim); });
+    (d.presensi || []).forEach(function (x) { tulis(m.C[x.tanggal] || m.Cidx[x.idx], [k.cHadir, k.cTk, k.cDl, k.cCuti], x.nilai, 'presensi ' + x.tanggal); });
+    (d.aplikasi || []).forEach(function (x) { tulis(m.P[x.tanggal] || m.Pidx[x.idx], [k.pSikepo, k.pEp, k.pFp, k.pTidak, k.pCutiDl], x.nilai, 'aplikasi ' + x.tanggal); });
 
-    catat(sh, d.oleh, n);
-    return keluar({ ok: true, ditulis: n, gagal: gagal });
+    if (n) catat(sh, d.oleh, n, gagal.length);
+    return keluar({ ok: true, versi: VERSI, ditulis: n, gagal: gagal });
   } catch (err) {
     return keluar({ ok: false, error: String(err) });
   } finally {
     lock.releaseLock();
   }
+}
+
+function cariTab(ss, gid) {
+  const sheets = ss.getSheets();
+  for (let i = 0; i < sheets.length; i++) if (String(sheets[i].getSheetId()) === String(gid)) return sheets[i];
+  return null;
+}
+
+/** Tulis beberapa kolom pada satu baris. Kolom berurutan disatukan agar cepat (cocok untuk sinkron otomatis). */
+function tulisBaris(sh, row, cols, vals) {
+  const pasangan = cols.map(function (c, i) {
+    return [c, vals[i] === null || vals[i] === undefined ? '' : String(vals[i])];
+  }).sort(function (a, b) { return a[0] - b[0]; });
+  let n = 0, mulai = pasangan[0][0], buf = [pasangan[0][1]];
+  const siram = function () {
+    if (!buf.length) return;
+    sh.getRange(row, mulai + 1, 1, buf.length).setValues([buf]);
+    n += buf.length;
+  };
+  for (let i = 1; i < pasangan.length; i++) {
+    if (pasangan[i][0] === mulai + buf.length) buf.push(pasangan[i][1]);
+    else { siram(); mulai = pasangan[i][0]; buf = [pasangan[i][1]]; }
+  }
+  siram();
+  return n;
 }
 
 /** Membaca struktur tab: bagian A–C, posisi kolom, tim, sub (Program/Monev), dan tanggal. */
@@ -600,11 +678,15 @@ function petakan(sh) {
   return m;
 }
 
-function catat(sh, oleh, n) {
+function catat(sh, oleh, n, gagal) {
   const ss = sh.getParent();
   let log = ss.getSheetByName('_audit');
-  if (!log) { log = ss.insertSheet('_audit'); log.appendRow(['Waktu', 'Oleh', 'Tab', 'Jumlah']); log.hideSheet(); }
-  log.appendRow([new Date(), oleh || '-', sh.getName(), n + ' sel']);
+  if (!log) {
+    log = ss.insertSheet('_audit');
+    log.appendRow(['Waktu', 'Oleh', 'Tab', 'Jumlah', 'Catatan']);
+    log.hideSheet();
+  }
+  log.appendRow([new Date(), oleh || '-', sh.getName(), n + ' sel', gagal ? gagal + ' baris tidak ditemukan' : 'otomatis']);
 }
 
 function keluar(o) {

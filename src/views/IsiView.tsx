@@ -56,8 +56,9 @@ export default function IsiView({ params }: { params: URLSearchParams }) {
 /* ------------------------------- form kegiatan ------------------------------- */
 
 function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParams }) {
-  const { settings, updateWeek } = useApp();
+  const { settings, updateWeek, syncState } = useApp();
   const toast = useToast();
+  const siapSinkron = !!settings.scriptUrl && !!settings.token && settings.autoSync;
 
   const awal = () => {
     const t = timById(params.get("tim") ?? "") ?? timById(settings.timUtama) ?? TIMS[0];
@@ -101,8 +102,9 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
     updateWeek((w) => setLampiran(setKegiatan(w, k, bersih, settings.nama), lampKey(tim, sub), lamp.trim(), settings.nama));
     setItems(bersih);
     setFlash((f) => f + 1);
-    if (!diam) toast(bersih.length ? `Tersimpan · ${bersih.length} butir` : "Isian dikosongkan");
-    else toast("Perubahan disimpan otomatis", "info");
+    const lanjut = siapSinkron ? " · langsung ke Sheet" : "";
+    if (!diam) toast(bersih.length ? `Tersimpan · ${bersih.length} butir${lanjut}` : "Isian dikosongkan");
+    else toast(`Perubahan tersimpan${lanjut}`, "info");
   };
 
   const pindah = (next: { tim: string; sub: string; d: string }) => {
@@ -208,7 +210,17 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {week.dirty[`A:${key}`] && <Pill tone="warn">belum dikirim</Pill>}
+            {week.dirty[`A:${key}`] && (
+              <Pill tone={syncState.status === "error" ? "bad" : "warn"}>
+                {syncState.status === "error"
+                  ? "gagal sinkron"
+                  : syncState.status === "sending" || syncState.status === "queued"
+                    ? "mengirim…"
+                    : siapSinkron
+                      ? "menunggu sinkron"
+                      : "belum tersinkron"}
+              </Pill>
+            )}
             {items.length > 0 && (
               <Btn variant="soft" size="sm" onClick={() => setItems(items.map(rapikan))} title="Rapikan ejaan & kapitalisasi">
                 <I.wand className="h-3.5 w-3.5" /> Rapikan
@@ -248,10 +260,22 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
         </div>
 
         <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-5">
-          <span className="mr-auto text-[12px] text-muted">{berubah ? "Ada perubahan belum disimpan" : "Semua perubahan tersimpan di perangkat"}</span>
-          <Btn variant="ghost" onClick={() => simpan()} disabled={!berubah}>
-            <I.check className="h-4 w-4" /> Simpan
-          </Btn>
+          <span className="mr-auto text-[12px] text-muted">
+            {berubah
+              ? "Ada perubahan belum disimpan"
+              : siapSinkron
+                ? syncState.status === "error"
+                  ? "Tersimpan di perangkat · gagal sinkron ke Sheet"
+                  : syncState.status === "sending" || syncState.status === "queued"
+                    ? "Tersimpan · sedang masuk ke Sheet…"
+                    : "Tersimpan dan otomatis masuk Google Sheet"
+                : "Tersimpan di perangkat"}
+          </span>
+          {nextDate && (
+            <Btn variant="ghost" onClick={() => simpan()} disabled={!berubah}>
+              <I.check className="h-4 w-4" /> Simpan
+            </Btn>
+          )}
           {nextDate && (
             <Btn variant="brand" onClick={simpanLanjut}>
               Simpan & lanjut {hariDari(nextDate)}
@@ -259,9 +283,8 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
             </Btn>
           )}
           {!nextDate && (
-            <Btn variant="brand" onClick={() => { if (berubah) simpan(); go("sinkron"); }}>
-              Simpan & kirim ke sheet
-              <I.send className="h-4 w-4" />
+            <Btn variant="brand" onClick={() => { if (berubah) simpan(); }} disabled={!berubah}>
+              <I.check className="h-4 w-4" /> Simpan
             </Btn>
           )}
         </div>
@@ -315,7 +338,7 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
           <ul className="mt-2 space-y-1.5 text-[12px] leading-relaxed text-muted">
             <li>· Tulis santai: “bikin flyer buat medsos” otomatis jadi “Membuat flyer untuk media sosial”.</li>
             <li>· <b>Ctrl/⌘ + Enter</b> = simpan & lanjut ke hari berikutnya.</li>
-            <li>· Isian tersimpan di perangkat; kirim ke sheet lewat menu <b>Kirim</b>.</li>
+            <li>· Isian langsung masuk Google Sheet otomatis — tanpa menyalin ke sheet.</li>
           </ul>
         </Card>
       </div>
@@ -345,7 +368,7 @@ function FormRencana({ week }: { week: WeekData }) {
       delete n[id];
       return n;
     });
-    toast(`Rencana ${timById(id)?.label} tersimpan`);
+    toast(`Rencana ${timById(id)?.label} tersimpan${settings.scriptUrl && settings.token && settings.autoSync ? " · langsung ke Sheet" : ""}`);
     const i = urut.findIndex((t) => t.id === id);
     const next = urut.slice(i + 1).find((t) => !(week.rencana[t.id] ?? []).length);
     if (next) setBuka(next.id);
@@ -366,7 +389,7 @@ function FormRencana({ week }: { week: WeekData }) {
                 <span className="mr-1.5 text-[12px] text-muted">{t.no}</span>
                 {t.label}
               </span>
-              {week.dirty[`B:${t.id}`] && <Pill tone="warn">belum dikirim</Pill>}
+              {week.dirty[`B:${t.id}`] && <Pill tone="warn">menunggu sinkron</Pill>}
               <span className={cx("ml-auto text-[12px] font-semibold", items.length ? "text-brand" : "text-[#b9b8b2]")}>
                 {items.length ? `${items.length} rencana` : "kosong"}
               </span>

@@ -238,9 +238,9 @@ export default function ChatAsisten() {
     bot(
       [
         <>
-          <span className="font-semibold text-brand">✓ Tersimpan.</span> {c.items.length} butir untuk {hariDari(c.d)}, {tanggalPendek(c.d)}.
+          <span className="font-semibold text-brand">✓ Tersimpan.</span> {c.items.length} butir untuk {hariDari(c.d)}, {tanggalPendek(c.d)} — langsung masuk Google Sheet.
         </>,
-        next ? <>Lanjut isi <b>{hariDari(next)}</b>?</> : "Semua hari untuk tim ini sudah terisi. Kirim ke Google Sheet sekarang?",
+        next ? <>Lanjut isi <b>{hariDari(next)}</b>?</> : "Semua hari untuk tim ini sudah terisi. Isian Anda otomatis tersimpan di sheet.",
       ],
       "selesai",
     );
@@ -347,7 +347,7 @@ export default function ChatAsisten() {
         const out: Chip[] = [];
         if (next) out.push({ label: `Isi ${hariDari(next)}`, primary: true, onPick: () => pilihHari(next) });
         out.push({ label: "Ganti tim", onPick: () => { user("Ganti tim"); bot(["Tim mana?"], "tim"); } });
-        out.push({ label: "Kirim ke Sheet", primary: !next, onPick: () => go("sinkron") });
+        out.push({ label: "Lihat sinkronisasi", primary: !next, onPick: () => go("sinkron") });
         out.push({ label: "Lihat dashboard", onPick: () => go("dashboard") });
         return out;
       }
