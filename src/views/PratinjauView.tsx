@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { useApp } from "../lib/store";
-import { TIMS, TOTAL_PEGAWAI, joinUraian, lampKey, norm, parseLampiran, slotKey, tanggalPendek } from "../lib/model";
+import { TIMS, TOTAL_PEGAWAI, joinUraian, lampKey, lampiranTanggal, norm, slotKey } from "../lib/model";
 import { presensiCells } from "../lib/sheet";
+import { jamSinkron } from "../lib/sync";
 import { Btn, I } from "../components/ui";
 import { StateGate } from "./common";
 
@@ -8,7 +10,13 @@ const th = "border border-[#9a9a95] bg-[#f1f1ee] px-2 py-1.5 text-left text-[11.
 const td = "border border-[#9a9a95] px-2 py-1.5 align-top text-[12px] leading-snug";
 
 export default function PratinjauView() {
-  const { week, settings } = useApp();
+  const { week, settings, reload, dibacaAt } = useApp();
+
+  // Pratinjau & cetak harus memakai isi sheet terbaru: ambil ulang diam-diam saat halaman dibuka.
+  useEffect(() => {
+    if (!dibacaAt || Date.now() - dibacaAt > 8000) void reload(undefined, true);
+  }, [reload, dibacaAt]);
+
   if (!week) return <StateGate />;
 
   return (
@@ -19,9 +27,17 @@ export default function PratinjauView() {
           <h1 className="mt-1 text-[24px] font-extrabold tracking-tight sm:text-[28px]">Pratinjau laporan</h1>
           <p className="mt-1 text-[13px] text-muted">Tampilan mengikuti format sheet. Gunakan “Cetak / PDF” → Simpan sebagai PDF.</p>
         </div>
-        <Btn onClick={() => window.print()}>
-          <I.print className="h-4 w-4" /> Cetak / PDF
-        </Btn>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-[11.5px] text-muted">
+            {dibacaAt ? `Data sheet dibaca ${jamSinkron(dibacaAt)}` : "Membaca sheet…"}
+          </p>
+          <Btn variant="ghost" size="sm" onClick={() => void reload(undefined, true)} title="Ambil isi terbaru dari Google Sheet">
+            <I.refresh className="h-4 w-4" /> Ambil data terbaru
+          </Btn>
+          <Btn onClick={() => window.print()}>
+            <I.print className="h-4 w-4" /> Cetak / PDF
+          </Btn>
+        </div>
       </div>
 
       <article className="print-area mx-auto max-w-[900px] rounded-2xl border border-line bg-white p-6 shadow-sm sm:p-10">
@@ -54,7 +70,8 @@ export default function PratinjauView() {
                   ...week.dates.map((d) => ({ kind: "day" as const, sub, d })),
                 ]);
                 return rows.map((r, i) => {
-                  const lamp = r.kind === "sub" || (i === 0 && !r.sub) ? week.lampiran[lampKey(t.id, r.sub)] : undefined;
+                  // tautan bukti dukung mengikuti baris tanggalnya (sesuai isi kolom lampiran di sheet)
+                  const lamp = r.kind === "day" ? lampiranTanggal(week.lampiran[lampKey(t.id, r.sub)] ?? "", r.d) : [];
                   return (
                     <tr key={t.id + r.sub + r.d + i}>
                       {i === 0 && (
@@ -78,12 +95,12 @@ export default function PratinjauView() {
                         </>
                       )}
                       <td className={`${td} break-all text-[10.5px]`}>
-                        {lamp ? (
+                        {lamp.length ? (
                           <div className="space-y-0.5">
-                            {parseLampiran(lamp).map((e) => (
-                              <a key={e.url} href={e.url} target="_blank" rel="noreferrer" className="block text-[#1a5fd0] underline" title={e.url}>
-                                {e.tanggal ? <span className="text-[#6b6a64] no-underline">{tanggalPendek(e.tanggal)} · </span> : null}
-                                {e.url.length > 30 ? `${e.url.slice(0, 30)}…` : e.url}
+                            {lamp.map((u, j) => (
+                              <a key={u} href={u} target="_blank" rel="noreferrer" className="block text-[#1a5fd0] underline" title={u}>
+                                {lamp.length > 1 ? `${j + 1}. ` : ""}
+                                {u.length > 30 ? `${u.slice(0, 30)}…` : u}
                               </a>
                             ))}
                           </div>

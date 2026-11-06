@@ -161,8 +161,10 @@ type Ctx = {
   week: WeekData | null;
   weeks: Record<string, WeekData>;
   loadState: LoadState;
-  /** Muat ulang tab dari sheet; hasil `true` bila berhasil terbaca. */
-  reload: (gid?: string) => Promise<boolean>;
+  /** Muat ulang tab dari sheet; hasil `true` bila berhasil terbaca. `senyap` = tanpa indikator memuat. */
+  reload: (gid?: string, senyap?: boolean) => Promise<boolean>;
+  /** Waktu (ms) sheet terakhir berhasil dibaca ulang — dipakai pratinjau agar selalu data terbaru. */
+  dibacaAt?: number;
   /**
    * Buat tab minggu baru di spreadsheet: salinan struktur tab sumber,
    * isian mingguan kosong, tanggal digeser (default +7 hari).
@@ -203,6 +205,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [syncState, setSyncState] = useState<SyncState>({ status: "idle", pending: 0 });
   const [tautan, setTautan] = useState<TautanSiapPakai | null>(null);
   const [versiSkrip, setVersiSkrip] = useState("");
+  const [dibacaAt, setDibacaAt] = useState<number>();
 
   const dataRef = useRef(data);
   dataRef.current = data;
@@ -550,10 +553,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const reload = useCallback(
-    async (gid?: string) => {
+    async (gid?: string, senyap = false) => {
       const g = gid ?? dataRef.current.settings.activeGid;
       const tab = tabs.find((t) => t.gid === g) ?? { name: g, gid: g };
-      setLoadState({ status: "loading" });
+      if (!senyap) setLoadState({ status: "loading" });
       try {
         let fresh = await fetchWeek(g, tab.name);
         const local = dataRef.current.weeks[g];
@@ -565,10 +568,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           weeks: { ...d.weeks, [g]: merged },
           trend: { ...d.trend, [g]: { ...r, judul: tab.name } },
         }));
-        setLoadState({ status: "ok" });
+        setDibacaAt(Date.now());
+        if (!senyap) setLoadState({ status: "ok" });
         return true;
       } catch (e) {
-        setLoadState({ status: "error", error: e instanceof Error ? e.message : "Gagal memuat sheet." });
+        // pembaruan senyap tidak boleh menutupi status pemuatan yang sudah baik
+        if (!senyap) setLoadState({ status: "error", error: e instanceof Error ? e.message : "Gagal memuat sheet." });
         return false;
       }
     },
@@ -647,6 +652,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.settings.activeGid]);
 
+  // Segarkan diam-diam dari sheet saat jendela kembali aktif / ditinggal lama terbuka,
+  // supaya pratinjau & cetak selalu memakai isi sheet terbaru (perubahan rekan ikut terbaca).
+  const dibacaRef = useRef(0);
+  useEffect(() => {
+    dibacaRef.current = dibacaAt ?? 0;
+  }, [dibacaAt]);
+  useEffect(() => {
+    const segarkan = () => {
+      if (document.visibilityState === "hidden") return;
+      if (Date.now() - dibacaRef.current < 15000) return;
+      void reload(undefined, true);
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") segarkan();
+    };
+    window.addEventListener("focus", segarkan);
+    document.addEventListener("visibilitychange", onVisible);
+    const jam = window.setInterval(segarkan, 120000);
+    return () => {
+      window.removeEventListener("focus", segarkan);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(jam);
+    };
+  }, [reload]);
+
   const week = data.weeks[data.settings.activeGid] ?? null;
   const dirtyCount = week ? Object.keys(week.dirty).length : 0;
 
@@ -659,6 +689,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     weeks: data.weeks,
     loadState,
     reload,
+    dibacaAt,
     buatMingguBaru,
     updateWeek,
     trend: data.trend,

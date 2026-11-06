@@ -4,3 +4,4 @@ tsconfig.tsbuildinfo
 *.local
 .DS_Store
 .uji/uji-isi-lamp.mjs
+.uji/uji-pratinjau.mjs

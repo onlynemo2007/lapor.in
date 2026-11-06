@@ -53,9 +53,9 @@ export function pakaiStatusSinkron() {
     case "ok":
       return {
         tone: "ok" as const,
-        label: `Sheet terbarui ${jamSinkron(syncState.at)}`,
-        pendek: `Tersinkron ${jamSinkron(syncState.at)}`,
-        judul: "Semua isian sudah masuk Google Sheet.",
+        label: `Isian terkirim ${jamSinkron(syncState.at)}`,
+        pendek: `Terkirim ${jamSinkron(syncState.at)}`,
+        judul: "Semua isian sudah masuk Google Sheet. Untuk mengambil isi sheet terbaru, tekan Muat ulang.",
         aksi: "none" as const,
         retry: false,
       };

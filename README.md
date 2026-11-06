@@ -80,8 +80,14 @@ npm run dev     # http://localhost:5173
 npm run build   # dist/ (single-file HTML)
 ```
 
-Data laporan tersimpan di `localStorage` perangkat; sheet hanya dijadikan sumber baca (CSV ekspor publik)
+Data laporan tersimpan di `localStorage` perangkat; sheet dijadikan sumber baca (CSV ekspor publik)
 dan tujuan tulis (Apps Script Web App).
+
+**Kesegaran data.** Tab aktif dibaca ulang dari sheet saat aplikasi/tab dibuka, saat jendela kembali aktif,
+saat ditinggal terbuka (tiap 2 menit), dan setiap kali **Pratinjau & Cetak** dibuka — perubahan yang dibuat
+langsung di spreadsheet atau oleh rekan ikut terlihat tanpa perlu menekan apa pun. Halaman pratinjau
+menampilkan jam **“Data sheet dibaca …”** dan tombol **Ambil data terbaru**; isian lokal yang belum terkirim
+tetap dipertahankan saat pembacaan ulang (tidak tertimpa).
 
 ## Struktur singkat
 
