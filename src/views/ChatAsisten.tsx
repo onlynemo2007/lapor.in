@@ -3,14 +3,17 @@ import { setKegiatan, setLampiran, useApp } from "../lib/store";
 import {
   TIMS,
   type Tim,
+  gantiLampiranTanggal,
   hariDari,
-  joinLinks,
   joinUraian,
   lampKey,
   norm,
+  parseLampiran,
   rapikan,
   slotKey,
   splitLinks,
+  susunLampiran,
+  tambahLampiranTanggal,
   tanggalPendek,
   teksKeButir,
   timById,
@@ -191,11 +194,11 @@ export default function ChatAsisten() {
         c.lamp ? (
           <>
             Link bukti data dukung {c.sub || timById(c.tim)?.label} minggu ini sudah ada{" "}
-            <b>{splitLinks(c.lamp).length}</b> tautan. Tempel tautan baru untuk <b>menambah</b> (yang lama tetap ada),
+            <b>{parseLampiran(c.lamp).length}</b> tautan. Tempel tautan baru untuk <b>menambah</b> (yang lama tetap ada),
             atau pilih <b>Pakai yang lama</b>.
           </>
         ) : (
-          "Ada link bukti data dukung (Google Drive)? Tempel di sini — boleh beberapa sekaligus, otomatis bernomor. Atau Lewati."
+          "Ada link bukti data dukung (Google Drive)? Tempel di sini — boleh beberapa sekaligus. Tiap tautan disimpan dengan tanggalnya, tautan tanggal lain tetap aman. Atau Lewati."
         ),
       ],
       "lampiran",
@@ -210,11 +213,8 @@ export default function ChatAsisten() {
       return;
     }
     user(baru.join("\n"));
-    const gabung = [...splitLinks(ctx.current.lamp)];
-    baru.forEach((u) => {
-      if (!gabung.some((x) => x.toLowerCase() === u.toLowerCase())) gabung.push(u);
-    });
-    ctx.current.lamp = joinLinks(gabung);
+    // tautan baru ditulis dengan tanggal kegiatan ini; tautan tanggal lain tetap tersimpan
+    ctx.current.lamp = tambahLampiranTanggal(ctx.current.lamp, ctx.current.d, baru);
     konfirmasi();
   };
 
@@ -240,7 +240,7 @@ export default function ChatAsisten() {
             </div>
             <div className="grid grid-cols-[84px_1fr]">
               <span className="bg-paper px-2.5 py-1.5 text-muted">Lampiran</span>
-              <span className="whitespace-pre-wrap break-all px-2.5 py-1.5">{c.lamp ? joinLinks(splitLinks(c.lamp)) : "—"}</span>
+              <span className="whitespace-pre-wrap break-all px-2.5 py-1.5">{c.lamp ? susunLampiran(parseLampiran(c.lamp)) : "—"}</span>
             </div>
           </div>
         </>,
@@ -356,7 +356,14 @@ export default function ChatAsisten() {
         return c.lamp
           ? [
               { label: "Pakai yang lama", primary: true, onPick: () => { user("Pakai yang lama"); konfirmasi(); } },
-              { label: "Kosongkan lampiran", onPick: () => { user("Kosongkan lampiran"); ctx.current.lamp = ""; konfirmasi(); } },
+              {
+                label: "Kosongkan tanggal ini",
+                onPick: () => {
+                  user("Kosongkan tanggal ini");
+                  ctx.current.lamp = gantiLampiranTanggal(ctx.current.lamp, ctx.current.d, []);
+                  konfirmasi();
+                },
+              },
             ]
           : [{ label: "Lewati", primary: true, onPick: () => { user("Lewati"); konfirmasi(); } }];
       case "konfirmasi":

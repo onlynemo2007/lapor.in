@@ -3,16 +3,19 @@ import { setKegiatan, setLampiran, setRencana, useApp } from "../lib/store";
 import {
   TIMS,
   type WeekData,
+  gantiLampiranTanggal,
   hariDari,
-  joinLinks,
+  hurufKolom,
   joinUraian,
   lampKey,
+  lampiranTanggal,
   norm,
+  parseLampiran,
   rapikan,
-  samaLinks,
   slotAda,
   slotKey,
   splitLinks,
+  susunLampiran,
   tanggalPendek,
   timById,
 } from "../lib/model";
@@ -88,7 +91,8 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
   const key = slotKey(slot.tim, slot.sub, slot.d);
   const lk = lampKey(slot.tim, slot.sub);
   const [items, setItems] = useState<string[]>(() => week.kegiatan[key] ?? []);
-  const [lamp, setLamp] = useState<string>(() => week.lampiran[lk] ?? "");
+  // tautan bukti dukung disimpan per tanggal: satu sel per tim/minggu memuat semua tanggal
+  const [urlsTgl, setUrlsTgl] = useState<string[]>(() => lampiranTanggal(week.lampiran[lk] ?? "", slot.d));
   const [lampBaru, setLampBaru] = useState("");
   const [flash, setFlash] = useState(0);
   const loadedKey = useRef(key);
@@ -103,50 +107,52 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
   // muat isi saat slot/tab berganti
   useEffect(() => {
     setItems(week.kegiatan[key] ?? []);
-    setLamp(week.lampiran[lk] ?? "");
+    setUrlsTgl(lampiranTanggal(week.lampiran[lk] ?? "", slot.d));
     setLampBaru("");
     loadedKey.current = key;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, week.gid]);
 
   const tersimpan = week.kegiatan[key] ?? [];
-  const lampUrls = splitLinks(lamp);
-  /** Gabungkan tautan tersimpan + tautan yang masih di kotak input (tanpa duplikat). */
-  const gabungLampiran = (extra = "") => {
-    const semua = [...lampUrls, ...splitLinks(extra)];
-    return joinLinks(semua.filter((u, i) => semua.findIndex((x) => x.toLowerCase() === u.toLowerCase()) === i));
-  };
+  // tautan milik tanggal ini vs tanggal lain pada sel yang sama
+  const entriLamp = parseLampiran(week.lampiran[lk] ?? "");
+  const urlTersimpan = lampiranTanggal(week.lampiran[lk] ?? "", slot.d);
+  const jumlahLain = entriLamp.filter((e) => norm(e.tanggal) !== norm(slot.d)).length;
+  const samaDaftar = (a: string[], b: string[]) =>
+    a.length === b.length && a.every((u, i) => u.toLowerCase() === (b[i] ?? "").toLowerCase());
   const berubah =
     JSON.stringify(items.map((s) => s.trim()).filter(Boolean)) !== JSON.stringify(tersimpan) ||
-    !samaLinks(lamp, week.lampiran[lk] ?? "") ||
+    !samaDaftar(urlsTgl, urlTersimpan) ||
     splitLinks(lampBaru).length > 0;
 
-  /** Tambah tautan ke daftar — tautan yang sudah ada tidak pernah dihapus. */
+  /** Tambah tautan untuk tanggal ini — tautan tanggal ini/tanggal lain tidak dihapus. */
   const tambahLamp = () => {
     const baru = splitLinks(lampBaru);
     if (!baru.length) {
       toast("Tempel tautan yang diawali https://", "err");
       return;
     }
-    const gabung = [...lampUrls];
+    const gabung = [...urlsTgl];
     baru.forEach((u) => {
       if (!gabung.some((x) => x.toLowerCase() === u.toLowerCase())) gabung.push(u);
     });
-    setLamp(joinLinks(gabung));
+    setUrlsTgl(gabung);
     setLampBaru("");
-    if (gabung.length > lampUrls.length) toast(`Tautan ditambahkan · total ${gabung.length}`);
+    if (gabung.length > urlsTgl.length) toast(`Tautan ${tanggalPendek(slot.d)} ditambahkan`);
     else toast("Tautan itu sudah ada di daftar", "info");
   };
 
   const simpan = (diam = false) => {
     const bersih = items.map(rapikan).filter(Boolean);
     const k = loadedKey.current;
-    const [tim, sub] = k.split("|");
-    const lampFinal = gabungLampiran(lampBaru);
+    const [tim, sub, tgl] = k.split("|");
+    const tambahan = splitLinks(lampBaru);
+    // hanya entri tanggal ini yang diganti; tanggal lain di sel yang sama dibiarkan
+    const lampFinal = gantiLampiranTanggal(week.lampiran[lk] ?? "", tgl, [...urlsTgl, ...tambahan]);
     updateWeek((w) => setLampiran(setKegiatan(w, k, bersih, settings.nama), lampKey(tim, sub), lampFinal, settings.nama));
     setItems(bersih);
-    if (splitLinks(lampBaru).length) {
-      setLamp(lampFinal);
+    if (tambahan.length) {
+      setUrlsTgl([...urlsTgl, ...tambahan.filter((u) => !urlsTgl.some((x) => x.toLowerCase() === u.toLowerCase()))]);
       setLampBaru("");
     }
     setFlash((f) => f + 1);
@@ -298,15 +304,17 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
           Link bukti data dukung
           <span className="font-medium normal-case tracking-normal">
             {" "}
-            (boleh lebih dari satu · otomatis bernomor · satu sel untuk {slot.sub || tim.label} minggu ini · kolom J)
+            (satu sel untuk {slot.sub || tim.label} minggu ini · kolom {hurufKolom(week.cols.lamp)} · tiap tautan diberi
+            tanggalnya)
           </span>
         </label>
 
-        {lampUrls.length > 0 && (
+        {urlsTgl.length > 0 && (
           <ul className="mt-2 space-y-1.5">
-            {lampUrls.map((u, i) => (
+            {urlsTgl.map((u, i) => (
               <li key={u} className="flex items-center gap-2 rounded-xl border border-line bg-white px-2.5 py-2">
                 <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-paper font-mono text-[11px] font-bold text-muted">{i + 1}</span>
+                <Pill tone="neutral" className="shrink-0">{tanggalPendek(slot.d)}</Pill>
                 <a
                   href={u}
                   target="_blank"
@@ -317,7 +325,10 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
                   {u}
                 </a>
                 <button
-                  onClick={() => setLamp(joinLinks(lampUrls.filter((x) => x !== u)))}
+                  onClick={() => {
+                    setUrlsTgl(urlsTgl.filter((x) => x !== u));
+                    toast(`Tautan ${tanggalPendek(slot.d)} dihapus dari daftar — simpan untuk menerapkan`, "info");
+                  }}
                   className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted transition hover:bg-bad-soft hover:text-bad"
                   title="Hapus tautan ini"
                   aria-label={`Hapus tautan ${i + 1}`}
@@ -327,6 +338,13 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
               </li>
             ))}
           </ul>
+        )}
+
+        {jumlahLain > 0 && (
+          <p className="mt-2 rounded-xl bg-paper px-3 py-2 text-[11.5px] leading-relaxed text-muted">
+            Sel ini juga menyimpan <b className="text-ink">{jumlahLain} tautan tanggal lain</b> — tetap utuh dan tidak
+            tersentuh saat Anda menyimpan tanggal ini.
+          </p>
         )}
 
         <div className="mt-2 flex items-center gap-2 rounded-xl border border-line bg-white px-3 transition focus-within:border-brand">
@@ -344,12 +362,16 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
               const t = e.clipboardData.getData("text");
               if (splitLinks(t).length > 1) {
                 e.preventDefault();
-                setLamp(joinLinks([...lampUrls, ...splitLinks(t)].filter((u, i, a) => a.findIndex((x) => x.toLowerCase() === u.toLowerCase()) === i)));
+                const gabung = [...urlsTgl];
+                splitLinks(t).forEach((u) => {
+                  if (!gabung.some((x) => x.toLowerCase() === u.toLowerCase())) gabung.push(u);
+                });
+                setUrlsTgl(gabung);
                 setLampBaru("");
-                toast("Beberapa tautan sekaligus ditambahkan");
+                toast(`Beberapa tautan sekaligus ditambahkan untuk ${tanggalPendek(slot.d)}`);
               }
             }}
-            placeholder={lampUrls.length ? "Tambah tautan lain…" : "https://drive.google.com/…"}
+            placeholder={urlsTgl.length ? "Tambah tautan lain…" : "https://drive.google.com/…"}
             className="h-11 w-full bg-transparent text-[13.5px] outline-none"
           />
           <Btn variant="soft" size="sm" onClick={tambahLamp} disabled={!lampBaru.trim()} className="shrink-0">
@@ -357,8 +379,9 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
           </Btn>
         </div>
         <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">
-          Tautan baru <b>ditambahkan</b> ke daftar — yang lama tetap tersimpan. Bila lebih dari satu, sel sheet ditulis
-          bernomor <span className="font-mono">1. … 2. … 3. …</span> sesuai urutan.
+          Tiap tautan ditulis di sel sheet dengan tanggalnya, mis.{" "}
+          <span className="font-mono">{slot.d}: https://…</span>. Tautan tanggal lain hanya <b>ditambahkan</b> — skrip
+          membaca isi sel lebih dulu, jadi tidak ada yang terhapus kecuali Anda menekan tombol hapus.
         </p>
 
         <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-5">
@@ -405,15 +428,18 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
               {joinUraian(items) || <span className="text-[#b9b8b2]">(kosong)</span>}
             </pre>
           </div>
-          {lampUrls.length > 0 && (
+          {entriLamp.length > 0 && (
             <>
               <div className="mt-2 rounded-xl border border-line bg-paper">
                 <div className="flex border-b border-line font-mono text-[10.5px] text-muted">
-                  <span className="w-12 border-r border-line px-2 py-1.5">J{week.rows.L[lk] ?? "?"}</span>
-                  <span className="px-2 py-1.5">Lampiran ({lampUrls.length} tautan)</span>
+                  <span className="w-12 border-r border-line px-2 py-1.5">
+                    {hurufKolom(week.cols.lamp)}
+                    {week.rows.L[lk] ?? "?"}
+                  </span>
+                  <span className="px-2 py-1.5">Lampiran ({entriLamp.length} tautan)</span>
                 </div>
                 <pre className="max-h-[160px] overflow-auto whitespace-pre-wrap p-3 font-mono text-[11.5px] leading-relaxed">
-                  {joinLinks(lampUrls)}
+                  {susunLampiran(entriLamp)}
                 </pre>
               </div>
             </>

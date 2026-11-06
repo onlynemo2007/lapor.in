@@ -9,8 +9,9 @@ import {
   slotKey,
   lampKey,
   norm,
-  normalisasiLinks,
-  samaLinks,
+  normalisasiLampiran,
+  parseLampiran,
+  samaLampiran,
   SLOT_ROWS,
   TIMS,
 } from "./model";
@@ -697,13 +698,25 @@ export function setKegiatan(w: WeekData, k: string, items: string[], oleh: strin
 }
 
 export function setLampiran(w: WeekData, k: string, url: string, oleh: string): WeekData {
-  // beberapa tautan ditulis bernomor urut, satu tautan apa adanya
-  const isi = normalisasiLinks(url);
-  if (samaLinks(w.lampiran[k] ?? "", isi)) return w;
+  // satu baris per tautan, diawali tanggalnya (mis. "2 November 2026: https://…")
+  const isi = normalisasiLampiran(url);
+  if (samaLampiran(w.lampiran[k] ?? "", isi)) return w;
   const lampiran = { ...w.lampiran };
   if (isi) lampiran[k] = isi;
   else delete lampiran[k];
-  return { ...w, lampiran, dirty: { ...w.dirty, [`L:${k}`]: true }, meta: { ...w.meta, [`L:${k}`]: { oleh, at: Date.now() } } };
+
+  // Bila ada tautan lama yang hilang, itu karena user menekan hapus.
+  // Selain itu skrip hanya menambah, jadi isi sel tidak pernah tertimpa.
+  const lama = parseLampiran(w.lampiran[k] ?? "").map((e) => e.url.toLowerCase());
+  const baru = parseLampiran(isi).map((e) => e.url.toLowerCase());
+  const ganti = lama.some((u) => !baru.includes(u));
+
+  return {
+    ...w,
+    lampiran,
+    dirty: { ...w.dirty, [`L:${k}`]: true },
+    meta: { ...w.meta, [`L:${k}`]: { oleh, at: Date.now(), ganti } },
+  };
 }
 
 export function setRencana(w: WeekData, tim: string, items: string[], oleh: string): WeekData {

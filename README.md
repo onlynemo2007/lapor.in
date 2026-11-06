@@ -17,12 +17,20 @@ menyalin blok, tidak perlu menekan tombol “Kirim”.
 
 ### Link bukti data dukung (lampiran)
 
-Satu sel lampiran per tim/per minggu bisa memuat **lebih dari satu tautan**:
+Satu sel lampiran per tim/per minggu memuat **tautan dari semua tanggal**, masing-masing dengan penandanya:
 
-- Menambah tautan **tidak menghapus** tautan yang sudah ada di daftar.
-- Bila tautan lebih dari satu, sel ditulis berurutan bernomor `1. … 2. … 3. …`; tautan tunggal ditulis apa adanya.
+```
+2 November 2026: https://drive.google.com/…AAA/view
+3 November 2026: https://drive.google.com/…BBB/view
+```
+
+- Tautan **tanggal berbeda hidup berdampingan** dalam satu sel; tidak ada yang saling menimpa.
+- Menambah tautan **tidak pernah menghapus** tautan lain: skrip membaca isi sel lebih dulu, baru menambahkan.
+  Tautan hanya hilang bila Anda menekan tombol hapus di daftar (aplikasi mengirim `gabung:false`).
+- Bila satu tanggal punya beberapa tautan, semuanya ditulis dengan tanggal yang sama (urut sesuai daftar).
+- Format lama (bernomor `1. … 2. …`, atau tautan tanpa tanggal) tetap dikenali dan dipertahankan; tautan yang
+  sama tidak digandakan, hanya dilengkapi tanggalnya bila masih kosong.
 - Menempel beberapa tautan sekaligus (baris baru, spasi, atau koma) langsung dipecah dan dirapikan.
-- Membaca ulang dari sheet tetap mengenali format bernomor, sehingga sinkron tidak menghapus isi lama.
 
 ### Minggu baru (tab minggu berikutnya)
 
@@ -39,7 +47,7 @@ di spreadsheet tanpa membuka Google Sheets:
 - Tab baru diletakkan tepat di samping tab sumber; tab lain tidak disentuh. Setelah dibuat, aplikasi
   otomatis pindah ke tab itu dan isian berikutnya langsung masuk ke tab baru.
 
-Fitur ini memakai aksi `buatTab` pada Apps Script **v1.4**. Bila skrip di spreadsheet masih v1.3,
+Fitur ini memakai aksi `buatTab` pada Apps Script **v1.5**. Bila skrip di spreadsheet masih versi lama,
 aplikasi menampilkan peringatan: salin ulang kode dari menu Sinkronisasi, lalu
 **Terapkan → Kelola deployment → Edit → Versi baru** (URL `/exec` tidak berubah).
 

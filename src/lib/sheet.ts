@@ -15,7 +15,7 @@ import {
   joinUraian,
   lampKey,
   norm,
-  normalisasiLinks,
+  normalisasiLampiran,
   parseAngka,
   parsePegawai,
   slotKey,
@@ -422,7 +422,7 @@ export type Payload = {
   gid: string;
   oleh: string;
   kegiatan: { tim: string; sub: string; tanggal: string; uraian: string }[];
-  lampiran: { tim: string; sub: string; url: string }[];
+  lampiran: { tim: string; sub: string; url: string; gabung?: boolean }[];
   rencana: { tim: string; uraian: string }[];
   presensi: { tanggal: string; idx: number; nilai: string[] }[];
   aplikasi: { tanggal: string; idx: number; nilai: string[] }[];
@@ -441,7 +441,13 @@ export function buildPayload(w: WeekData, token: string, oleh: string, hanyaBeru
     });
     const lk = lampKey(tim.id, sub);
     if (inc(`L:${lk}`) && (w.lampiran[lk] || hanyaBerubah))
-      p.lampiran.push({ tim: tim.id, sub: norm(sub), url: normalisasiLinks(w.lampiran[lk] ?? "") });
+      p.lampiran.push({
+        tim: tim.id,
+        sub: norm(sub),
+        url: normalisasiLampiran(w.lampiran[lk] ?? ""),
+        // skrip menambahkan tautan ke isi sel; hanya "ganti" bila user menghapus tautan
+        gabung: !w.meta[`L:${lk}`]?.ganti,
+      });
   });
   TIMS.forEach((t) => {
     const items = w.rencana[t.id] ?? [];
@@ -521,7 +527,7 @@ export async function kirimKeScript(url: string, payload: Payload, batasMs = 250
 }
 
 /** Versi kode Apps Script yang disalin dari aplikasi (harus sama dengan `VERSI` di skrip). */
-export const SCRIPT_VERSI = "1.4";
+export const SCRIPT_VERSI = "1.5";
 
 export type BuatTabResult = {
   ok: boolean;
@@ -610,6 +616,8 @@ export const APPS_SCRIPT = `/**
  *
  * v1.4 menambah aksi "buatTab": menyalin tab minggu sebelumnya menjadi tab minggu
  * baru — struktur/judul/nama tim tetap, isian dikosongkan, tanggal digeser +7 hari.
+ * v1.5 menulis tautan bukti dukung secara MENAMBAH (bertanda tanggal) — isi sel
+ * lama tidak pernah terhapus kecuali aplikasi mengirim perintah ganti.
  */
 const TOKEN = 'GANTI-DENGAN-KODE-RAHASIA'; // samakan dengan isian di aplikasi
 const VERSI = '${SCRIPT_VERSI}';
@@ -642,7 +650,11 @@ function doPost(e) {
     };
 
     (d.kegiatan || []).forEach(function (x) { tulis(m.A[x.tim + '|' + x.sub + '|' + x.tanggal], [k.ur], [x.uraian], 'kegiatan ' + x.tim + ' ' + x.tanggal); });
-    (d.lampiran || []).forEach(function (x) { tulis(m.L[x.tim + '|' + x.sub], [k.lamp], [x.url], 'lampiran ' + x.tim); });
+    (d.lampiran || []).forEach(function (x) {
+      const barisLamp = m.L[x.tim + '|' + x.sub];
+      if (!barisLamp) { gagal.push('lampiran ' + x.tim); return; }
+      n += tulisLampiran(sh, barisLamp, k.lamp, x.url, x.gabung !== false);
+    });
     (d.rencana || []).forEach(function (x) { tulis(m.B[x.tim], [k.bUr], [x.uraian], 'rencana ' + x.tim); });
     (d.presensi || []).forEach(function (x) { tulis(m.C[x.tanggal] || m.Cidx[x.idx], [k.cHadir, k.cTk, k.cDl, k.cCuti], x.nilai, 'presensi ' + x.tanggal); });
     (d.aplikasi || []).forEach(function (x) { tulis(m.P[x.tanggal] || m.Pidx[x.idx], [k.pSikepo, k.pEp, k.pFp, k.pTidak, k.pCutiDl], x.nilai, 'aplikasi ' + x.tanggal); });
@@ -759,6 +771,58 @@ function petakan(sh) {
     }
   }
   return m;
+}
+
+/* ---------------------- tautan bukti dukung (bertanggal) ---------------------- */
+
+/** Tulis tautan ke sel lampiran: gabung = tambahkan ke isi lama (default), false = ganti. */
+function tulisLampiran(sh, row, col, teks, gabung) {
+  const sel = sh.getRange(row, col + 1);
+  const lama = String(sel.getDisplayValue() || '');
+  const isi = gabung ? gabungLampiran(lama, teks) : susunLampiran(entriLampiran(teks));
+  return tulisBaris(sh, row, [col], [isi]);
+}
+
+/** Pecah isi sel lampiran menjadi entri { tanggal, url }. */
+function entriLampiran(teks) {
+  const out = [], sudah = {};
+  String(teks || '').replace(/\\r/g, '').split('\\n').forEach(function (baris) {
+    const t = baris.trim();
+    if (!t) return;
+    const m = t.match(/^(\\d{1,2}\\s+[A-Za-z]+\\s+\\d{4})\\s*[:\\u2013-]\\s*(.*)$/);
+    const tanggal = m ? m[1] : '';
+    const isi = tanggal ? m[2] : t;
+    const re = /https?:\\/\\/[^\\s<>"']+/gi;
+    let u;
+    while ((u = re.exec(isi))) {
+      const url = u[0].replace(/[.,;:]+$/, '');
+      const kunci = url.toLowerCase();
+      if (sudah[kunci]) continue;
+      sudah[kunci] = 1;
+      out.push({ tanggal: tanggal, url: url });
+    }
+  });
+  return out;
+}
+
+/** Susun entri menjadi isi sel: satu baris per tautan, diawali tanggalnya. */
+function susunLampiran(entri) {
+  if (!entri.length) return '';
+  return entri.map(function (e) { return (e.tanggal ? e.tanggal + ': ' : '') + e.url; }).join('\\n');
+}
+
+/** Gabungkan isi sel lama dengan kiriman baru — tautan lama tidak pernah hilang. */
+function gabungLampiran(lama, baru) {
+  const hasil = entriLampiran(lama);
+  entriLampiran(baru).forEach(function (e) {
+    const ada = hasil.filter(function (x) { return x.url.toLowerCase() === e.url.toLowerCase(); })[0];
+    if (ada) {
+      if (!ada.tanggal && e.tanggal) ada.tanggal = e.tanggal;
+      return;
+    }
+    hasil.push({ tanggal: e.tanggal, url: e.url });
+  });
+  return susunLampiran(hasil);
 }
 
 function catat(sh, oleh, n, gagal) {

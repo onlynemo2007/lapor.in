@@ -1,5 +1,5 @@
 import { useApp } from "../lib/store";
-import { TIMS, TOTAL_PEGAWAI, joinUraian, lampKey, norm, slotKey, splitLinks } from "../lib/model";
+import { TIMS, TOTAL_PEGAWAI, joinUraian, lampKey, norm, parseLampiran, slotKey, tanggalPendek } from "../lib/model";
 import { presensiCells } from "../lib/sheet";
 import { Btn, I } from "../components/ui";
 import { StateGate } from "./common";
@@ -80,10 +80,10 @@ export default function PratinjauView() {
                       <td className={`${td} break-all text-[10.5px]`}>
                         {lamp ? (
                           <div className="space-y-0.5">
-                            {splitLinks(lamp).map((u, j, arr) => (
-                              <a key={u} href={u} target="_blank" rel="noreferrer" className="block text-[#1a5fd0] underline" title={u}>
-                                {arr.length > 1 ? `${j + 1}. ` : ""}
-                                {u.length > 34 ? `${u.slice(0, 34)}…` : u}
+                            {parseLampiran(lamp).map((e) => (
+                              <a key={e.url} href={e.url} target="_blank" rel="noreferrer" className="block text-[#1a5fd0] underline" title={e.url}>
+                                {e.tanggal ? <span className="text-[#6b6a64] no-underline">{tanggalPendek(e.tanggal)} · </span> : null}
+                                {e.url.length > 30 ? `${e.url.slice(0, 30)}…` : e.url}
                               </a>
                             ))}
                           </div>

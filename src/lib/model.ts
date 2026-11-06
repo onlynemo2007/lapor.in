@@ -148,7 +148,7 @@ export type WeekData = {
   anggaran: Anggaran[];
   rows: RowMap;
   dirty: Record<string, true>;
-  meta: Record<string, { oleh: string; at: number }>;
+  meta: Record<string, { oleh: string; at: number; ganti?: boolean }>;
   importedAt: number;
   syncedAt?: number;
 };
@@ -326,6 +326,92 @@ export const normalisasiLinks = (raw: string) => {
   const urls = splitLinks(raw);
   return urls.length ? joinLinks(urls) : (raw ?? "").trim();
 };
+
+/* ---------------- lampiran bertanggal (satu sel per tim/minggu) ---------------- */
+
+/**
+ * Satu baris isi sel lampiran. Bentuk yang didukung:
+ *   "2 November 2026: https://…"   ← tautan untuk tanggal tertentu
+ *   "https://…"                    ← tautan tanpa tanggal (data lama)
+ */
+export type LampiranEntri = { tanggal: string; url: string };
+
+/** Baca sel lampiran menjadi daftar entri bertanggal. */
+export function parseLampiran(raw: string): LampiranEntri[] {
+  const teks = (raw ?? "").replace(/\r/g, "");
+  const out: LampiranEntri[] = [];
+  teks.split("\n").forEach((baris) => {
+    const t = baris.trim();
+    if (!t) return;
+    const m = t.match(/^(\d{1,2}\s+[A-Za-z]+\s+\d{4})\s*[:\u2013-]\s*(.*)$/);
+    const tanggal = m && isTanggal(m[1]) ? cleanDate(m[1]) : "";
+    const isi = tanggal ? m![2] : t;
+    splitLinks(isi).forEach((url) => {
+      if (out.some((e) => e.url.toLowerCase() === url.toLowerCase())) return;
+      out.push({ tanggal, url });
+    });
+  });
+  return out;
+}
+
+/** Susun entri menjadi isi sel: satu baris per tautan, diawali tanggalnya. */
+export function susunLampiran(entri: LampiranEntri[]): string {
+  const out: LampiranEntri[] = [];
+  entri.forEach((e) => {
+    const url = (e.url ?? "").trim();
+    if (!url) return;
+    if (out.some((x) => x.url.toLowerCase() === url.toLowerCase())) return;
+    out.push({ tanggal: e.tanggal ? cleanDate(e.tanggal) : "", url });
+  });
+  return out.map((e) => (e.tanggal ? `${e.tanggal}: ${e.url}` : e.url)).join("\n");
+}
+
+/** Rapikan isi sel lampiran (tanggal & tautan); teks tanpa tautan dibiarkan apa adanya. */
+export const normalisasiLampiran = (raw: string) => {
+  const entri = parseLampiran(raw);
+  return entri.length ? susunLampiran(entri) : (raw ?? "").trim();
+};
+
+/** Tautan yang tercatat untuk satu tanggal. */
+export const lampiranTanggal = (raw: string, tanggal: string) =>
+  parseLampiran(raw)
+    .filter((e) => norm(e.tanggal) === norm(cleanDate(tanggal)))
+    .map((e) => e.url);
+
+/** Ganti tautan satu tanggal saja — entri tanggal lain tidak disentuh. */
+export function gantiLampiranTanggal(raw: string, tanggal: string, urls: string[]): string {
+  const tgl = cleanDate(tanggal);
+  const lain = parseLampiran(raw).filter((e) => norm(e.tanggal) !== norm(tgl));
+  const baru: LampiranEntri[] = urls.map((u) => ({ tanggal: tgl, url: u.trim() })).filter((e) => e.url);
+  return susunLampiran([...lain, ...baru]);
+}
+
+/** Tambah tautan untuk satu tanggal tanpa menghapus yang sudah ada. */
+export function tambahLampiranTanggal(raw: string, tanggal: string, urls: string[]): string {
+  const ada = lampiranTanggal(raw, tanggal);
+  return gantiLampiranTanggal(raw, tanggal, [...ada, ...urls]);
+}
+
+/** Dua isi lampiran sama bila tanggal & tautannya sama (urutan diperhatikan). */
+export const samaLampiran = (a: string, b: string) => {
+  const x = parseLampiran(a);
+  const y = parseLampiran(b);
+  if (!x.length && !y.length) return (a ?? "").trim() === (b ?? "").trim();
+  if (x.length !== y.length) return false;
+  return x.every((e, i) => norm(e.tanggal) === norm(y[i].tanggal) && e.url.toLowerCase() === y[i].url.toLowerCase());
+};
+
+/** Huruf kolom dari indeks 0-based: 0 → A, 9 → J, 10 → K. */
+export function hurufKolom(n: number): string {
+  let s = "";
+  let x = n + 1;
+  while (x > 0) {
+    const m = (x - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    x = Math.floor((x - 1) / 26);
+  }
+  return s;
+}
 
 /** Isi lampiran dianggap sama walau berbeda nomor/format penulisan. */
 export const samaLinks = (a: string, b: string) => {
