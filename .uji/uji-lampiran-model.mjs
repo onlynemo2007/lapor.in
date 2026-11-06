@@ -54,6 +54,44 @@ cek("kelompok per tanggal", per["2 november 2026"]?.length === 1 && per["3 novem
 const per2 = M.lampiranPerTanggal(`1. ${A}`);
 cek("kelompok tanpa tanggal pakai kunci kosong", per2[""]?.[0] === A, JSON.stringify(per2));
 
+/* tanggal ditulis manual: berbagai format & tautan tanpa tanggal */
+const manual = [
+  "https://drive.google.com/tanpa-tanggal",
+  "2 November 2026: https://drive.google.com/b",
+  "2/11/2026: https://drive.google.com/c",
+  "2 Nov 2026 https://drive.google.com/d",
+  "2026-11-02: https://drive.google.com/e",
+  "3-11-2026: https://drive.google.com/f",
+].join("\n");
+cek(
+  "tanggal format lain dikenali",
+  M.lampiranTanggal(manual, "2 November 2026").length === 4,
+  JSON.stringify(M.lampiranTanggal(manual, "2 November 2026")),
+);
+cek("tanggal 3 dikenali (3-11-2026)", M.lampiranTanggal(manual, "3 November 2026").length === 1);
+cek(
+  "tautan tanpa tanggal tetap terbaca",
+  M.lampiranTanpaTanggal(manual).length === 1 && M.lampiranTanpaTanggal(manual)[0].endsWith("tanpa-tanggal"),
+  JSON.stringify(M.lampiranTanpaTanggal(manual)),
+);
+cek("tanggalSama abaikan format", M.tanggalSama("2 Nov 2026", "2 November 2026") && M.tanggalSama("02/11/2026", "2-11-2026"));
+cek("tanggalSama beda hari", !M.tanggalSama("2 November 2026", "3 November 2026"));
+cek(
+  "menyimpan satu tanggal tidak menghapus tautan tanpa tanggal",
+  M.gantiLampiranTanggal(manual, "2 November 2026", ["https://drive.google.com/baru"]).includes("tanpa-tanggal"),
+  M.gantiLampiranTanggal(manual, "2 November 2026", ["https://drive.google.com/baru"]),
+);
+cek(
+  "tautan tanpa https:// ikut dibaca",
+  M.splitLinks("www.drive.google.com/file/d/XYZ/view")[0] === "https://www.drive.google.com/file/d/XYZ/view",
+  JSON.stringify(M.splitLinks("www.drive.google.com/file/d/XYZ/view")),
+);
+cek(
+  "kalimat bertanggal bukan awalan tanggal",
+  M.parseLampiran("rapat 2 November 2026 https://drive.google.com/x")[0]?.tanggal === "",
+  JSON.stringify(M.parseLampiran("rapat 2 November 2026 https://drive.google.com/x")),
+);
+
 /* huruf kolom */
 cek("huruf kolom 9 = J, 10 = K", M.hurufKolom(9) === "J" && M.hurufKolom(10) === "K" && M.hurufKolom(26) === "AA", M.hurufKolom(26));
 

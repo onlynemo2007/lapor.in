@@ -6,6 +6,7 @@ import PratinjauView from "../src/views/PratinjauView";
 
 const A = "https://drive.google.com/file/d/AAA/view";
 const B = "https://drive.google.com/file/d/BBB/view";
+const C = "https://drive.google.com/C"; // ditulis manual di sheet tanpa tanggal
 
 /* sheet v1.6: tautan ada di baris tanggalnya masing-masing */
 const CSV = [
@@ -13,7 +14,7 @@ const CSV = [
   ",,A,KEGIATAN TIM,,,,,,",
   "No,,Tim,Tanggal,Uraian,,,,,Link Bukti Dukung",
   `,,Humas,3 November 2025,"Satu butir",,,,,3 November 2025: ${A}`,
-  `,,,4 November 2025,"Dua butir",,,,,4 November 2025: ${B}`,
+  `,,,4 November 2025,"Dua butir",,,,,"4 November 2025: ${B}\n${C}"`,
   ",,B,RENCANA KEGIATAN TIM,,,,,,",
   "No,,Tim,Uraian,,,,,,",
   ",,Humas,,,,,,,",
@@ -102,6 +103,8 @@ async function main() {
   cek("angka tabel diformat seperti sheet", teksD.includes("80.000.000") && teksD.includes("15.000.000"), "");
   cek("teks sel apa adanya", teksD.includes("Lunas"), "");
   cek("total kode tetap tercetak", teksD.includes("25.000.000"), "");
+  cek("tautan manual tanpa tanggal ikut tercetak", (document.body.textContent ?? "").includes("drive.google.com/C"), "");
+  cek("tautan tanpa tanggal hanya sekali", ((document.body.textContent ?? "").match(/drive\.google\.com\/C/g) ?? []).length === 1, String(((document.body.textContent ?? "").match(/drive\.google\.com\/C/g) ?? []).length));
   cek("bagian D ikut tercetak", /D\. Realisasi Keuangan/.test(document.body.textContent ?? "") && (document.body.textContent ?? "").includes("032.12.01"), "");
 
   /* tombol ambil data terbaru memicu pembacaan lagi */

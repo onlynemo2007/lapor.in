@@ -83,6 +83,13 @@ async function main() {
   });
 
   const c = () => aktif as unknown as ReturnType<typeof useApp>;
+  cek("label data sheet dibaca ada", /Data sheet dibaca|Membaca sheet/.test(teks()), "");
+  cek(
+    "tombol ambil data terbaru ada",
+    !!tombolMemuat("Ambil data terbaru"),
+    "",
+  );
+
   cek("tab termuat", !!c().week && c().week!.dates.length === 2, JSON.stringify(c().week?.dates));
   cek("mulai di 3 November", c().week!.dates[0] === "3 November 2025", c().week!.dates[0]);
 
@@ -104,7 +111,7 @@ async function main() {
   /* --- pindah ke tanggal 4: tambah tautan lain --- */
   await klik(tombolMemuat("4 Nov"));
   cek("tanggal 4 tidak menampilkan tautan tanggal 3", !(document.querySelector('input[placeholder^="https://drive"]') as HTMLInputElement)?.value);
-  cek("ada keterangan tautan tanggal lain", /tautan tanggal lain/.test(teks()), "");
+  cek("ada keterangan tautan tanggal lain", /tautan lain/.test(teks()), "");
   const input4 = document.querySelector('input[placeholder^="https://drive"]') as HTMLInputElement;
   await act(async () => {
     await isi(input4, "https://drive.google.com/file/d/BBB/view");

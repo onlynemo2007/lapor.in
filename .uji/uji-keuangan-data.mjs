@@ -62,6 +62,36 @@ cek("kode tak dikenal diabaikan", setKeuangan(week, "999", { pagu: 1 }, "Uji") =
 
 /* pembacaan ulang sheet tidak boleh menimpa realisasi yang belum terkirim */
 const ulang = parseWeek(bagianD, "1", "Nov I");
+/* ---- lampiran manual di sheet tidak hilang saat aplikasi membaca ulang ---- */
+{
+  const csvLamp = [
+    "LAPORAN MINGGU I BULAN NOVEMBER 2026,,,,,,,,",
+    ",,A,KEGIATAN TIM,,,,,,",
+    "No,,Tim,Tanggal,Uraian,,,,,Link Bukti Dukung",
+    ",,Humas,2 November 2026,,,,,,https://drive.google.com/file/d/MANUAL/view",
+    ",,,3 November 2026,,,,,,",
+  ].join("\n");
+  const segar = parseWeek(csvLamp, "1", "Nov I");
+  const lokal = {
+    ...segar,
+    lampiran: { "humas|": `2 November 2026: https://drive.google.com/file/d/LOKAL/view` },
+    dirty: { "L:humas||2 november 2026": true },
+    meta: { "L:humas|": { oleh: "Uji", at: 1, ganti: false } },
+  };
+  const g = mergeWeek(segar, lokal);
+  cek("tautan manual di sheet tetap ada", g.lampiran["humas|"].includes("MANUAL"), g.lampiran["humas|"]);
+  cek("isian aplikasi yang belum terkirim tetap ada", g.lampiran["humas|"].includes("LOKAL"), g.lampiran["humas|"]);
+
+  const dihapus = {
+    ...segar,
+    lampiran: { "humas|": `3 November 2026: https://drive.google.com/file/d/BARU/view` },
+    dirty: { "L:humas||2 november 2026": true },
+    meta: { "L:humas|": { oleh: "Uji", at: 1, ganti: false }, "L:humas||2 november 2026": { oleh: "Uji", at: 1, ganti: true } },
+  };
+  const g2 = mergeWeek(segar, dihapus);
+  cek("tautan yang sengaja dihapus tidak dihidupkan lagi", !g2.lampiran["humas|"].includes("MANUAL"), g2.lampiran["humas|"]);
+}
+
 const gabung = mergeWeek(ulang, baru);
 cek("isian belum terkirim dipertahankan saat baca ulang", gabung.anggaran.find((a) => a.kode === "032.12.02").realisasi === 33000000, JSON.stringify(gabung.anggaran));
 cek("baris lain mengikuti sheet", gabung.anggaran.find((a) => a.kode === "032.12.01").realisasi === 25000000, JSON.stringify(gabung.anggaran));

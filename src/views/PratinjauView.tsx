@@ -6,6 +6,7 @@ import {
   joinUraian,
   lampKey,
   lampiranTanggal,
+  lampiranTanpaTanggal,
   norm,
   parseAngka,
   rupiah,
@@ -95,8 +96,16 @@ export default function PratinjauView() {
                   ...week.dates.map((d) => ({ kind: "day" as const, sub, d })),
                 ]);
                 return rows.map((r, i) => {
-                  // tautan bukti dukung mengikuti baris tanggalnya (sesuai isi kolom lampiran di sheet)
-                  const lamp = r.kind === "day" ? lampiranTanggal(week.lampiran[lampKey(t.id, r.sub)] ?? "", r.d) : [];
+                  // tautan bukti dukung mengikuti baris tanggalnya (sesuai isi kolom lampiran di sheet);
+                  // tautan yang ditulis manual tanpa tanggal ditampilkan di baris tanggal pertama tim
+                  const rawLamp = week.lampiran[lampKey(t.id, r.sub)] ?? "";
+                  const lamp =
+                    r.kind === "day"
+                      ? [
+                          ...lampiranTanggal(rawLamp, r.d),
+                          ...(r.d === week.dates[0] ? lampiranTanpaTanggal(rawLamp) : []),
+                        ]
+                      : [];
                   return (
                     <tr key={t.id + r.sub + r.d + i}>
                       {i === 0 && (

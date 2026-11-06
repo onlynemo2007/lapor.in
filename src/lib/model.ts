@@ -236,13 +236,53 @@ const HARI = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 export const isTanggal = (s: string) =>
   new RegExp(`^\\d{1,2}\\s+(${BULAN.join("|")})\\s+\\d{4}$`, "i").test(s.replace(/\s+/g, " ").trim());
 
-export const parseTanggal = (s: string): Date | null => {
-  const m = s.replace(/\s+/g, " ").trim().match(/^(\d{1,2}) (\w+) (\d{4})$/);
-  if (!m) return null;
-  const bi = BULAN.indexOf(m[2].toLowerCase());
-  if (bi < 0) return null;
-  return new Date(Number(m[3]), bi, Number(m[1]));
+/** Indeks bulan dari nama penuh atau singkatannya ("November", "Nov", "Nop"). */
+const bulanDari = (t: string): number => {
+  const s = t.toLowerCase().replace(/[^a-z]/g, "");
+  if (s.length < 3) return -1;
+  const penuh = BULAN.indexOf(s);
+  if (penuh >= 0) return penuh;
+  const alias: Record<string, number> = { nop: 10, peb: 1, des: 11 };
+  if (s in alias) return alias[s];
+  // "sept" → september, "agu" → agustus
+  return BULAN.findIndex((b) => b.startsWith(s) || s.startsWith(b.slice(0, 4)));
 };
+
+/**
+ * Baca tanggal dari beberapa penulisan yang lazim dipakai orang saat mengisi sheet:
+ *   "2 November 2026", "2 Nov 2026", "02/11/2026", "2-11-2026", "2026-11-02"
+ */
+export const parseTanggal = (s: string): Date | null => {
+  const t = (s ?? "").replace(/\s+/g, " ").trim();
+  if (!t) return null;
+  let m = t.match(/^(\d{1,2})\s+([A-Za-z]+)\.?\s+(\d{4})$/);
+  if (m) {
+    const bi = bulanDari(m[2]);
+    if (bi < 0) return null;
+    return new Date(Number(m[3]), bi, Number(m[1]));
+  }
+  m = t.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+  if (m) {
+    const d = Number(m[1]), mo = Number(m[2]), y = Number(m[3]);
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    return new Date(y, mo - 1, d);
+  }
+  m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) {
+    const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    return new Date(y, mo - 1, d);
+  }
+  return null;
+};
+
+/** Dua penulisan tanggal menunjuk hari yang sama (2 November 2026 ≈ 02/11/2026 ≈ 2 Nov 2026). */
+export function tanggalSama(a: string, b: string): boolean {
+  const da = parseTanggal(a);
+  const db = parseTanggal(b);
+  if (da && db) return da.toDateString() === db.toDateString();
+  return norm(a) === norm(b);
+}
 
 export const hariDari = (s: string) => {
   const d = parseTanggal(s);
@@ -347,10 +387,11 @@ export function splitUraian(raw: string): string[] {
 export function splitLinks(raw: string): string[] {
   const t = (raw ?? "").replace(/\r/g, "");
   const out: string[] = [];
-  const re = /https?:\/\/[^\s<>"']+/gi;
+  // alamat tanpa "https://" pun diterima (mis. "www.drive.google.com/…") lalu dirapikan
+  const re = /(?:https?:\/\/|www\.)[^\s<>"']+/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(t))) {
-    let u = m[0].replace(/[.,;:]+$/, "");
+    let u = m[0].replace(/^www\./i, "https://www.").replace(/[.,;:]+$/, "");
     // buang tanda kurung penutup yang tidak berpasangan
     while (u.endsWith(")") && (u.match(/\(/g)?.length ?? 0) < (u.match(/\)/g)?.length ?? 0)) u = u.slice(0, -1);
     if (!out.some((x) => x.toLowerCase() === u.toLowerCase())) out.push(u);
@@ -387,9 +428,7 @@ export function parseLampiran(raw: string): LampiranEntri[] {
   teks.split("\n").forEach((baris) => {
     const t = baris.trim();
     if (!t) return;
-    const m = t.match(/^(\d{1,2}\s+[A-Za-z]+\s+\d{4})\s*[:\u2013-]\s*(.*)$/);
-    const tanggal = m && isTanggal(m[1]) ? cleanDate(m[1]) : "";
-    const isi = tanggal ? m![2] : t;
+    const { tanggal, isi } = pisahTanggal(t);
     splitLinks(isi).forEach((url) => {
       if (out.some((e) => e.url.toLowerCase() === url.toLowerCase())) return;
       out.push({ tanggal, url });
@@ -398,16 +437,34 @@ export function parseLampiran(raw: string): LampiranEntri[] {
   return out;
 }
 
+/**
+ * Pisahkan awalan tanggal pada satu baris sel lampiran.
+ * Menerima "2 November 2026: https://…" maupun "2/11/2026 https://…" (tanpa titik dua).
+ */
+function pisahTanggal(t: string): { tanggal: string; isi: string } {
+  const pola =
+    /^(\d{1,2}\s+[A-Za-z]+\.?\s+\d{4}|\d{1,2}[/\-.]\d{1,2}[/\-.]\d{4}|\d{4}-\d{1,2}-\d{1,2})\s*(?:[:\u2013\u2014-]\s*)?(.*)$/;
+  const m = t.match(pola);
+  if (!m) return { tanggal: "", isi: t };
+  const sisa = m[2] ?? "";
+  // hanya dianggap awalan tanggal bila sisanya tautan (atau kosong) — bukan kalimat biasa
+  if (sisa.trim() && !splitLinks(sisa).length) return { tanggal: "", isi: t };
+  return { tanggal: cleanDate(m[1]), isi: sisa };
+}
+
 /** Susun entri menjadi isi sel: satu baris per tautan, diawali tanggalnya. */
 export function susunLampiran(entri: LampiranEntri[]): string {
-  const out: LampiranEntri[] = [];
+  // satu tautan sekali saja; bila tautan yang sama punya tanggal, versi bertanggal yang dipakai
+  const peta = new Map<string, LampiranEntri>();
   entri.forEach((e) => {
     const url = (e.url ?? "").trim();
     if (!url) return;
-    if (out.some((x) => x.url.toLowerCase() === url.toLowerCase())) return;
-    out.push({ tanggal: e.tanggal ? cleanDate(e.tanggal) : "", url });
+    const kunci = url.toLowerCase();
+    const tanggal = e.tanggal ? cleanDate(e.tanggal) : "";
+    const ada = peta.get(kunci);
+    if (!ada || (!ada.tanggal && tanggal)) peta.set(kunci, { tanggal, url });
   });
-  return out.map((e) => (e.tanggal ? `${e.tanggal}: ${e.url}` : e.url)).join("\n");
+  return [...peta.values()].map((e) => (e.tanggal ? `${e.tanggal}: ${e.url}` : e.url)).join("\n");
 }
 
 /** Rapikan isi sel lampiran (tanggal & tautan); teks tanpa tautan dibiarkan apa adanya. */
@@ -416,10 +473,16 @@ export const normalisasiLampiran = (raw: string) => {
   return entri.length ? susunLampiran(entri) : (raw ?? "").trim();
 };
 
-/** Tautan yang tercatat untuk satu tanggal. */
+/** Tautan yang tercatat untuk satu tanggal (format penulisan tanggal apa pun). */
 export const lampiranTanggal = (raw: string, tanggal: string) =>
   parseLampiran(raw)
-    .filter((e) => norm(e.tanggal) === norm(cleanDate(tanggal)))
+    .filter((e) => e.tanggal && tanggalSama(e.tanggal, tanggal))
+    .map((e) => e.url);
+
+/** Tautan yang ditulis di sheet tanpa tanggal — tetap ditampilkan supaya tidak "hilang". */
+export const lampiranTanpaTanggal = (raw: string) =>
+  parseLampiran(raw)
+    .filter((e) => !e.tanggal)
     .map((e) => e.url);
 
 /** Ganti tautan satu tanggal saja — entri tanggal lain tidak disentuh. */
@@ -435,7 +498,7 @@ export function lampiranPerTanggal(raw: string): Record<string, string[]> {
 
 export function gantiLampiranTanggal(raw: string, tanggal: string, urls: string[]): string {
   const tgl = cleanDate(tanggal);
-  const lain = parseLampiran(raw).filter((e) => norm(e.tanggal) !== norm(tgl));
+  const lain = parseLampiran(raw).filter((e) => !e.tanggal || !tanggalSama(e.tanggal, tgl));
   const baru: LampiranEntri[] = urls.map((u) => ({ tanggal: tgl, url: u.trim() })).filter((e) => e.url);
   return susunLampiran([...lain, ...baru]);
 }

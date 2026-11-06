@@ -67,7 +67,9 @@ const timIdDari = (name: string) => {
 /* ---------------------------- parse tab ---------------------------- */
 
 const has = (r: string[], pred: (x: string) => boolean) => r.findIndex((x) => pred(norm(x)));
-const isLink = (s: string) => /https?:\/\//i.test(s);
+const isLink = (s: string) => /(https?:\/\/|www\.)/i.test(s);
+/** Tautan tanpa "https://" (mis. "www.drive.google.com/…") dirapikan agar bisa diklik. */
+const rapiTautan = (s: string) => s.trim().replace(/^www\./i, "https://www.");
 
 /** Kata kunci yang hanya muncul di tabel keuangan (bagian D), bukan di tabel kegiatan/presensi. */
 const KATA_KEUANGAN = /\b(pagu|realisasi|sisa|jumlah|nilai|penarikan|anggaran|pembayaran|up|ls|triwulan|akun)\b/i;
@@ -304,7 +306,7 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
             lampFound = true;
           }
           const lk = lampKey(tim, sub);
-          (lampRaw[lk] ??= []).push(r[j].trim());
+          (lampRaw[lk] ??= []).push(rapiTautan(r[j]));
           break;
         }
       }
@@ -417,7 +419,19 @@ export function mergeWeek(fresh: WeekData, local?: WeekData): WeekData {
       else delete dst[k];
     };
     if (cat === "A") pick(local.kegiatan, out.kegiatan);
-    if (cat === "L") pick(local.lampiran, out.lampiran);
+    if (cat === "L") {
+      // kunci dirty lampiran per tanggal ("tim|sub|tanggal") → nilai sel disimpan per tim/sub
+      const bagian = k.split("|");
+      const lk = `${bagian[0]}|${bagian[1] ?? ""}`;
+      const lokal = local.lampiran[lk];
+      if (lokal === undefined) return;
+      // tautan yang sudah dihapus pengguna (ganti) jangan dihidupkan lagi dari sheet;
+      // selain itu gabungkan supaya tautan yang baru diisi manual di sheet tidak hilang
+      const ganti = Object.entries(local.meta).some(([mk, mv]) => mk.startsWith(`L:${lk}|`) && mv.ganti);
+      out.lampiran[lk] = ganti
+        ? lokal
+        : susunLampiran([...parseLampiran(out.lampiran[lk] ?? ""), ...parseLampiran(lokal)]);
+    }
     if (cat === "B") pick(local.rencana, out.rencana);
     if (cat === "C") pick(local.presensi, out.presensi);
     if (cat === "P") pick(local.aplikasi, out.aplikasi);

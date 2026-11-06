@@ -9,6 +9,7 @@ import {
   joinUraian,
   lampKey,
   lampiranTanggal,
+  lampiranTanpaTanggal,
   norm,
   parseLampiran,
   rapikan,
@@ -17,9 +18,11 @@ import {
   splitLinks,
   susunLampiran,
   tanggalPendek,
+  tanggalSama,
   timById,
 } from "../lib/model";
 import { go } from "../components/Shell";
+import { jamSinkron } from "../lib/sync";
 import { Btn, Card, I, Pill, cx, useToast } from "../components/ui";
 import ItemsEditor from "./ItemsEditor";
 import ChatAsisten from "./ChatAsisten";
@@ -28,7 +31,7 @@ import { StateGate } from "./common";
 type Mode = "form" | "chat" | "rencana";
 
 export default function IsiView({ params }: { params: URLSearchParams }) {
-  const { week } = useApp();
+  const { week, reload, dibacaAt } = useApp();
   const mode = (["form", "chat", "rencana"].includes(params.get("mode") ?? "") ? params.get("mode") : "form") as Mode;
 
   if (!week) return <StateGate />;
@@ -39,6 +42,12 @@ export default function IsiView({ params }: { params: URLSearchParams }) {
         <div>
           <p className="text-[13px] font-medium text-muted">{mode === "rencana" ? week.judulRencana || "Bagian B" : week.judulKegiatan || "Bagian A"}</p>
           <h1 className="mt-1 text-[24px] font-extrabold tracking-tight sm:text-[28px]">Isi laporan</h1>
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-[11.5px] text-muted">
+            <span>{dibacaAt ? `Data sheet dibaca ${jamSinkron(dibacaAt)}` : "Membaca sheet…"}</span>
+            <Btn variant="ghost" size="sm" onClick={() => void reload(undefined, true)} title="Ambil isi terbaru dari Google Sheet">
+              <I.refresh className="h-4 w-4" /> Ambil data terbaru
+            </Btn>
+          </p>
         </div>
         <div className="flex rounded-xl border border-line bg-white p-1">
           {(
@@ -117,7 +126,9 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
   // tautan milik tanggal ini vs tanggal lain pada tim yang sama
   const entriLamp = parseLampiran(week.lampiran[lk] ?? "");
   const urlTersimpan = lampiranTanggal(week.lampiran[lk] ?? "", slot.d);
-  const entriTgl = entriLamp.filter((e) => norm(e.tanggal) === norm(slot.d));
+  const entriTgl = entriLamp.filter((e) => e.tanggal && tanggalSama(e.tanggal, slot.d));
+  // tautan yang ditulis manual di sheet tanpa awalan tanggal — tetap ditampilkan
+  const tanpaTgl = lampiranTanpaTanggal(week.lampiran[lk] ?? "");
   const jumlahLain = entriLamp.length - entriTgl.length;
   const barisLamp = week.rows.A[key] ?? week.rows.L[lk];
   const samaDaftar = (a: string[], b: string[]) =>
@@ -342,10 +353,48 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
           </ul>
         )}
 
+        {tanpaTgl.length > 0 && (
+          <div className="mt-2 rounded-xl border border-warn/40 bg-warn-soft/40 px-3 py-2">
+            <p className="text-[11.5px] font-semibold text-ink">
+              Tautan di sheet yang belum bertanggal ({tanpaTgl.length})
+            </p>
+            <ul className="mt-1.5 space-y-1">
+              {tanpaTgl.map((u) => (
+                <li key={u} className="flex items-center gap-2">
+                  <a
+                    href={u}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="min-w-0 flex-1 truncate text-[12px] font-medium text-brand hover:underline"
+                    title={u}
+                  >
+                    {u}
+                  </a>
+                  <Btn
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (urlsTgl.some((x) => x.toLowerCase() === u.toLowerCase())) return;
+                      setUrlsTgl([...urlsTgl, u]);
+                      toast(`Tautan dipakai untuk ${tanggalPendek(slot.d)} — simpan untuk menerapkan`);
+                    }}
+                  >
+                    Pakai tanggal ini
+                  </Btn>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted">
+              Ditulis langsung di sheet tanpa awalan tanggal. Tekan “Pakai tanggal ini” agar tautannya tercatat pada{" "}
+              {tanggalPendek(slot.d)}.
+            </p>
+          </div>
+        )}
+
         {jumlahLain > 0 && (
           <p className="mt-2 rounded-xl bg-paper px-3 py-2 text-[11.5px] leading-relaxed text-muted">
-            Sel ini juga menyimpan <b className="text-ink">{jumlahLain} tautan tanggal lain</b> — tetap utuh dan tidak
-            tersentuh saat Anda menyimpan tanggal ini.
+            Sel ini juga menyimpan <b className="text-ink">{jumlahLain} tautan lain</b> (tanggal lain / belum
+            bertanggal) — tetap utuh dan tidak tersentuh saat Anda menyimpan tanggal ini.
           </p>
         )}
 
@@ -384,7 +433,12 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
           Tautan di sini ditulis ke <b>baris {tanggalPendek(slot.d)}</b> (kolom{" "}
           {hurufKolom(week.cols.lamp)}) sebagai <span className="font-mono">{slot.d}: https://…</span>. Tautan tanggal
           lain tetap di barisnya masing-masing — skrip hanya menambah, tidak ada yang terhapus kecuali Anda menekan
-          tombol hapus.
+          tombol hapus. Saat mengisi manual di sheet, tulis tanggalnya di depan tautan (mis.{" "}
+          <span className="font-mono">2 November 2026: https://…</span>; ditulis{" "}
+          <span className="font-mono">2/11/2026</span> atau <span className="font-mono">2 Nov 2026</span> juga
+          dikenali). Tempel <b>alamat tautannya</b> apa adanya — tautan yang disisipkan lewat “Sisipkan link”
+          berteks (mis. tulisan “Bukti 2 Nov” yang bisa diklik) tidak terbaca aplikasi karena yang tersimpan hanya
+          teksnya.
         </p>
 
         <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-5">
