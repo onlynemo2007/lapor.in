@@ -186,6 +186,10 @@ export type WeekData = {
   presensi: Record<string, Presensi>;
   aplikasi: Record<string, Aplikasi>;
   anggaran: Anggaran[];
+  /** judul tabel sumber pagu/realisasi (mis. "Realisasi Anggaran") */
+  anggaranJudul?: string;
+  /** rentang baris tabel itu di sheet (1-based) — dipakai untuk menampilkan asal datanya */
+  anggaranBaris?: { dari: number; sampai: number };
   /** tabel keuangan lain di bagian D (dibaca generik: judul, kolom, baris) */
   tabelKeuangan: TabelKeuangan[];
   /** isian sel tabel keuangan yang belum terkirim: "baris:kolom" → teks */

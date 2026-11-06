@@ -80,7 +80,7 @@ const angkaSel = (t: string) => /^-?[\d.,\s]+$/.test(t) && /\d/.test(t);
  * Rencana Penarikan, …). Judul diambil dari baris teks di atas baris judul kolom; kolom & baris
  * dibaca apa adanya, tanpa mengandaikan susunan tertentu.
  */
-export function parseTabelKeuangan(rows: string[][]): TabelKeuangan[] {
+export function parseTabelKeuangan(rows: string[][], kecuali?: Set<number>): TabelKeuangan[] {
   const out: TabelKeuangan[] = [];
   const isi = (r: string[]) => (r ?? []).map((x) => (x ?? "").trim());
   const nonKosong = (r: string[]) => isi(r).map((t, j) => (t ? j : -1)).filter((j) => j >= 0);
@@ -128,13 +128,9 @@ export function parseTabelKeuangan(rows: string[][]): TabelKeuangan[] {
         if (judul) break;
       }
     }
+    if (kecuali?.has(i + 1)) continue;
     const sel = isi(rows[i]);
     const kolom = kolomIdx.map((j) => ({ index: j, label: sel[j] || `Kolom ${j + 1}` }));
-    // tabel anggaran ber-kolom Kode/Pagu/Realisasi sudah punya isian khusus — jangan diduplikasi
-    const punyaKode = kolom.some((k) => /^kode\b/i.test(k.label));
-    const punyaPagu = kolom.some((k) => /pagu/i.test(k.label));
-    const punyaReal = kolom.some((k) => /realisasi/i.test(k.label));
-    if (punyaKode && punyaPagu && punyaReal) continue;
 
     const baris: BarisKeuangan[] = [];
     for (let j = i + 1; j < rows.length; j++) {
@@ -159,6 +155,58 @@ export function parseTabelKeuangan(rows: string[][]): TabelKeuangan[] {
   return out;
 }
 
+/** Judul bagian yang lazim dipakai sheet (dipakai agar baris data tidak dianggap judul bagian). */
+const JUDUL_BAGIAN: Record<string, RegExp> = {
+  A: /kegiatan/i,
+  B: /rencana/i,
+  C: /kehadiran|presensi|rekap/i,
+  D: /realisasi|keuangan|anggaran/i,
+};
+
+/**
+ * Kenali baris judul bagian ("A. KEGIATAN TIM", "D. REALISASI KEUANGAN", …).
+ * Sengaja ketat: sel penanda harus berdiri sendiri di awal baris dan judulnya mengandung kata
+ * yang sesuai — supaya baris data seperti "A | Sisa Di Rekening" tidak dianggap judul bagian.
+ */
+function penandaBagian(
+  r: string[],
+  sudah: Set<string>,
+  hurufTerakhir: number,
+): { huruf: string; judul: string } | null {
+  for (let j = 0; j < 4; j++) {
+    const sel = (r[j] ?? "").trim();
+    if (!/^[A-Da-d]\.?$/.test(sel)) continue;
+    const huruf = sel[0].toUpperCase();
+    if (j > 0 && r.slice(0, j).some((x) => (x ?? "").trim())) continue;
+    // tiap bagian hanya dikenali sekali dan urutannya menurun (A → B → C → D):
+    // baris data seperti "A | Sisa Di Rekening" di tengah tabel tidak boleh membajak judul bagian
+    if (sudah.has(huruf)) continue;
+    if ("ABCD".indexOf(huruf) < hurufTerakhir) continue;
+    const judul = (r[j + 1] ?? "").trim();
+    if (!judul || judul.length > 60) continue;
+    const kapital = judul === judul.toUpperCase() && /[A-Z]/.test(judul);
+    const kunci = JUDUL_BAGIAN[huruf].test(judul);
+    const barisJudul = !r.slice(j + 2).some((x) => (x ?? "").trim());
+    if (!kunci && !kapital && !barisJudul) continue;
+    return { huruf, judul: judul.replace(/\s+/g, " ") };
+  }
+  return null;
+}
+
+/** Baris judul (1–3 sel teks) tepat di atas judul kolom — dipakai menamai tabel keuangan. */
+function judulDiAtas(rows: string[][], i: number): string {
+  for (let b = i - 1; b >= 0 && b >= i - 3; b--) {
+    const sel = (rows[b] ?? []).map((x) => (x ?? "").trim());
+    const idx = sel.map((t, j) => (t ? j : -1)).filter((j) => j >= 0);
+    if (!idx.length || idx.length > 3) continue;
+    if (idx.some((j) => angkaSel(sel[j]))) continue;
+    const teks = idx.map((j) => sel[j]).filter((t) => !/^[A-F]$/.test(t));
+    if (!teks.length) continue;
+    return teks[0].replace(/\s+/g, " ");
+  }
+  return "";
+}
+
 export function parseWeek(csv: string, gid: string, tab: string): WeekData {
   const rows = parseCSV(csv).map((r) => r.map((x) => x ?? ""));
   const c: Cols = { ...DEFAULT_COLS };
@@ -177,6 +225,7 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
     presensi: {},
     aplikasi: {},
     anggaran: [],
+    anggaranJudul: "",
     tabelKeuangan: [],
     selKeuangan: {},
     rows: { A: {}, L: {}, B: {}, C: {}, P: {} },
@@ -186,12 +235,18 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
   };
 
   let sec = "";
+  const bagianSudah = new Set<string>();
+  let hurufBagian = -1;
   let tim: string | null = null;
   let sub = "";
   let lampFound = false;
   let lampHeader = false;
-  // bagian D/R: baris realisasi hanya dibaca setelah judul kolomnya benar-benar dikenali
-  let keuHeader = false;
+  // bagian D/R: baris realisasi hanya dibaca setelah judul kolomnya benar-benar dikenali.
+  // Bisa ada beberapa tabel ber-kolom Kode+Pagu (mis. "Realisasi Anggaran" dan "Sisa Di Rekening"),
+  // jadi tiap tabel dikumpulkan dulu lalu dipilih yang benar sebagai sumber pagu/realisasi.
+  type KodeTabel = { judul: string; header: number; baris: Anggaran[] };
+  const kodeTabel: KodeTabel[] = [];
+  let keuHeader: KodeTabel | null = null;
   const firstRow: Record<string, number> = {};
   const lampRaw: Record<string, string[]> = {};
   const cList: { tgl: string; row: number; r: string[] }[] = [];
@@ -203,19 +258,18 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
 
     if (r.some((x) => /^LAPORAN MINGGU/i.test(x.trim()))) w.judul = r.find((x) => /^LAPORAN MINGGU/i.test(x.trim()))!.trim().replace(/\s+/g, " ");
 
-    // penanda bagian: "A" | "B" | "C" | "D" diikuti judul
-    for (let j = 0; j < 4; j++) {
-      // penanda bagian boleh "D", "d.", "D." — apa pun yang dipakai di sheet
-      const penanda = cell(j).replace(/[^A-Za-z]/g, "").toUpperCase();
-      if (["A", "B", "C", "D"].includes(penanda) && cell(j + 1)) {
-        sec = penanda;
-        if (sec === "A") w.judulKegiatan = cell(j + 1);
-        if (sec === "B") w.judulRencana = cell(j + 1);
-        if (sec === "C") w.judulPresensi = cell(j + 1);
-        tim = null;
-        sub = "";
-        return;
-      }
+    // penanda bagian: "A" | "B" | "C" | "D" diikuti judul bagian
+    const bagian = penandaBagian(r, bagianSudah, hurufBagian);
+    if (bagian) {
+      bagianSudah.add(bagian.huruf);
+      hurufBagian = "ABCD".indexOf(bagian.huruf);
+      sec = bagian.huruf;
+      if (sec === "A") w.judulKegiatan = bagian.judul;
+      if (sec === "B") w.judulRencana = bagian.judul;
+      if (sec === "C") w.judulPresensi = bagian.judul;
+      tim = null;
+      sub = "";
+      return;
     }
     if (r.some((x) => /^Rekapitulasi Penggunaan Aplikasi Presensi/i.test(x.trim()))) return void (sec = "P");
     if (r.some((x) => /\brealisasi (anggaran|keuangan)/i.test(x))) return void (sec = "R");
@@ -272,17 +326,19 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
       const u = has(r, (x) => x.startsWith("uraian")), re = has(r, (x) => x.startsWith("realisasi"));
       if (k >= 0 && p >= 0) {
         Object.assign(c, { rKode: k, rPagu: p, rUr: u >= 0 ? u : k + 1, rReal: re >= 0 ? re : p + 1 });
-        keuHeader = true;
+        const tabel: KodeTabel = { judul: judulDiAtas(rows, i), header: sheetRow, baris: [] };
+        kodeTabel.push(tabel);
+        keuHeader = tabel;
         return;
       }
       // tabel keuangan lain (Rekapitulasi UP, LS, Rencana Penarikan, …) punya judul kolom sendiri
       if (u >= 0 && p >= 0) {
-        keuHeader = false;
+        keuHeader = null;
         return;
       }
       const terisi = r.filter((x) => (x ?? "").trim()).length;
       if (terisi <= 1) {
-        keuHeader = false;
+        keuHeader = null;
         return;
       }
     }
@@ -345,12 +401,25 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
           realisasi: parseAngka(cell(c.rReal)),
           baris: sheetRow,
         };
-        if (a.pagu > 0) w.anggaran.push(a);
+        if (a.pagu > 0) keuHeader.baris.push(a);
       }
     }
   });
 
-  w.tabelKeuangan = parseTabelKeuangan(rows);
+  // sumber pagu/realisasi: tabel berjudul "Realisasi Anggaran" (kalau ada), selain itu tabel kode pertama
+  const utama =
+    kodeTabel.find((t) => /realisasi\s*anggaran/i.test(t.judul)) ??
+    kodeTabel.find((t) => /realisasi|anggaran/i.test(t.judul)) ??
+    kodeTabel[0] ??
+    null;
+  w.anggaran = utama ? utama.baris : [];
+  w.anggaranJudul = utama?.judul ?? "";
+  const awal = utama?.baris[0]?.baris;
+  const akhir = utama?.baris[utama.baris.length - 1]?.baris;
+  w.anggaranBaris = awal && akhir ? { dari: awal, sampai: akhir } : undefined;
+
+  // tabel ber-kode lain tetap ditampilkan apa adanya (bisa diisi selnya), tabel utama tidak diduplikasi
+  w.tabelKeuangan = parseTabelKeuangan(rows, new Set(utama ? [utama.header] : []));
 
   // baris lampiran = baris tanggal pertama tiap tim/sub (Program/Monev: baris pertama sub)
   Object.entries(firstRow).forEach(([lk, row]) => {
@@ -568,7 +637,7 @@ export type Payload = {
   presensi: { tanggal: string; idx: number; nilai: string[] }[];
   aplikasi: { tanggal: string; idx: number; nilai: string[] }[];
   /** bagian D — realisasi keuangan per kode kegiatan */
-  keuangan: { kode: string; uraian: string; pagu: number; realisasi: number }[];
+  keuangan: { kode: string; uraian: string; pagu: number; realisasi: number; baris?: number }[];
   /** bagian D — sel tabel keuangan lain (Rekapitulasi UP, LS, Rencana Penarikan, …) */
   sel: { baris: number; kolom: number; nilai: string; label?: string; labelKolom?: number }[];
 };
@@ -615,7 +684,8 @@ export function buildPayload(w: WeekData, token: string, oleh: string, hanyaBeru
   // bagian D: hanya baris yang diubah (atau semua saat kirim ulang penuh)
   w.anggaran.forEach((a) => {
     if (!a.kode) return;
-    if (inc(`R:${a.kode}`)) p.keuangan.push({ kode: a.kode, uraian: a.uraian, pagu: a.pagu, realisasi: a.realisasi });
+    if (inc(`R:${a.kode}`))
+      p.keuangan.push({ kode: a.kode, uraian: a.uraian, pagu: a.pagu, realisasi: a.realisasi, baris: a.baris });
   });
   // sel tabel keuangan lain: kirim baris + kolom yang diubah, plus label baris sebagai pengaman
   Object.keys(w.dirty).forEach((dk) => {

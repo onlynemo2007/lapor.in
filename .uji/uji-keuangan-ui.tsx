@@ -12,6 +12,7 @@ const CSV = [
   ',,Humas,3 November 2025,"Satu butir",,,',
   ",,,,,,,",
   ",,D,REALISASI KEUANGAN,,,,",
+  "Realisasi Anggaran,,,,,,",
   "No,Kode,Uraian,Pagu,Realisasi,,",
   '1,032.12.01,"Perjalanan dinas",100000000,25000000,,',
   '2,032.12.02,"Sewa kendaraan",50000000,10000000,,',
@@ -135,12 +136,18 @@ async function main() {
     simpan3.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await new Promise((r) => setTimeout(r, 60));
   });
-  cek("nilai sel tersimpan", c().week!.selKeuangan["13:3"] === "30000000", JSON.stringify(c().week!.selKeuangan));
-  cek("ditandai belum terkirim", c().week!.dirty["K:13:3"] === true, JSON.stringify(c().week!.dirty));
+  cek("nilai sel tersimpan", c().week!.selKeuangan["14:3"] === "30000000", JSON.stringify(c().week!.selKeuangan));
+  cek("ditandai belum terkirim", c().week!.dirty["K:14:3"] === true, JSON.stringify(c().week!.dirty));
   const p3 = buildPayload(c().week!, "tok", "Uji", true);
-  const sel3 = p3.sel.find((x) => x.baris === 13 && x.kolom === 3);
+  const sel3 = p3.sel.find((x) => x.baris === 14 && x.kolom === 3);
   cek("payload sel memuat baris & kolom", !!sel3 && sel3.nilai === "30000000", JSON.stringify(p3.sel));
   cek("payload sel membawa label baris", !!sel3 && sel3.label === "1" && sel3.labelKolom === 0, JSON.stringify(sel3));
+
+  /* sumber data ditampilkan supaya bisa dicocokkan dengan sheet */
+  const teksSumber = document.body.textContent ?? "";
+  cek("sumber tabel ditampilkan", /Sumber: tabel/.test(teksSumber) && teksSumber.includes("Realisasi Anggaran"), teksSumber.slice(0, 160));
+  cek("rentang baris ditampilkan", /baris\s*9–10/.test(teksSumber), teksSumber.slice(0, 400));
+  cek("judul tabel tersimpan", c().week!.anggaranJudul === "Realisasi Anggaran", String(c().week!.anggaranJudul));
 
   const lulus = hasil.filter((h) => h.lulus).length;
   hasil.filter((h) => !h.lulus).forEach((h) => console.log("  GAGAL:", h.nama, "→", h.info));

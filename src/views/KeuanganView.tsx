@@ -105,6 +105,22 @@ export default function KeuanganView() {
             Isi <b>pagu</b> dan <b>realisasi</b> tiap kode kegiatan. Nilainya ditulis ke baris yang sama di bagian D
             sheet (dicocokkan lewat kode, jadi aman bila ada baris disisipkan). Rumus total di sheet tidak diubah.
           </p>
+          <p className="mt-1.5 max-w-[640px] text-[11.5px] leading-relaxed text-muted">
+            {week.anggaran.length ? (
+              <>
+                Sumber: tabel <b className="text-ink">{week.anggaranJudul || "bagian D"}</b>
+                {week.anggaranBaris ? (
+                  <>
+                    {" "}
+                    · baris <b className="text-ink">{week.anggaranBaris.dari}–{week.anggaranBaris.sampai}</b> ·{" "}
+                    {week.anggaran.length} kode
+                  </>
+                ) : null}
+              </>
+            ) : (
+              "Belum ada tabel kode/pagu yang terbaca di bagian D."
+            )}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-[11.5px] text-muted">{dibacaAt ? `Data sheet ${jamSinkron(dibacaAt)}` : ""}</p>
@@ -157,7 +173,7 @@ export default function KeuanganView() {
 
         {baris.length === 0 ? (
           <p className="mt-3 rounded-xl bg-paper p-4 text-[13px] leading-relaxed text-muted">
-            Tabel realisasi keuangan (bagian D) tidak ditemukan di tab ini. Pastikan baris judul kolom memuat{" "}
+            Tabel kode/pagu (bagian D) tidak ditemukan di tab ini. Pastikan baris judul kolom memuat{" "}
             <span className="font-mono">Kode</span>, <span className="font-mono">Uraian</span>,{" "}
             <span className="font-mono">Pagu</span>, dan <span className="font-mono">Realisasi</span>, lalu tekan{" "}
             <b>Ambil data terbaru</b>.
@@ -171,6 +187,7 @@ export default function KeuanganView() {
                   <th className="py-2 pr-2 font-semibold">Uraian kegiatan</th>
                   <th className="w-[150px] py-2 pr-2 text-right font-semibold">Pagu (Rp)</th>
                   <th className="w-[150px] py-2 pr-2 text-right font-semibold">Realisasi (Rp)</th>
+                  <th className="w-[140px] py-2 pr-2 text-right font-semibold">Sisa (Rp)</th>
                   <th className="w-[92px] py-2 text-right font-semibold">Serapan</th>
                 </tr>
               </thead>
@@ -208,6 +225,9 @@ export default function KeuanganView() {
                           placeholder="0"
                           className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-right font-mono text-[12px] outline-none focus:border-brand"
                         />
+                      </td>
+                      <td className="py-2 pr-2 text-right font-mono text-[12px] text-muted">
+                        {pagu || real ? (pagu - real).toLocaleString("id-ID") : "—"}
                       </td>
                       <td className="py-2 text-right">
                         <span className={cx("font-mono text-[12px] font-bold", p >= 100 ? "text-brand" : p > 0 ? "text-ink" : "text-muted")}>

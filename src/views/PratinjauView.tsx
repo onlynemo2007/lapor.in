@@ -239,7 +239,9 @@ export default function PratinjauView() {
           <>
             <h2 className="mt-7 text-[13px] font-bold">D. Realisasi Keuangan</h2>
             {week.anggaran.length > 0 && week.tabelKeuangan.length > 0 && (
-              <p className="mt-2 text-[11.5px] font-semibold">Realisasi anggaran per kode kegiatan</p>
+              <p className="mt-2 text-[11.5px] font-semibold">
+                {week.anggaranJudul || "Realisasi anggaran per kode kegiatan"}
+              </p>
             )}
             {week.anggaran.length > 0 && (
             <div className="mt-2 overflow-x-auto">
