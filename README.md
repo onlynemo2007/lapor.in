@@ -35,6 +35,19 @@ Tautan bukti dukung ditulis **pada baris tanggalnya masing-masing** di kolom lam
   sama tidak digandakan, hanya dilengkapi tanggalnya bila masih kosong.
 - Menempel beberapa tautan sekaligus (baris baru, spasi, atau koma) langsung dipecah dan dirapikan.
 
+### Realisasi keuangan (bagian D)
+
+Menu **Realisasi Keuangan** (sebelah Presensi) dipakai mengisi bagian D langsung dari aplikasi:
+
+- Setiap kode kegiatan ditampilkan satu baris: **Kode · Uraian · Pagu · Realisasi · % serapan**.
+- Ubah **pagu**, **realisasi**, atau uraiannya, lalu tekan **Simpan** — nilainya ditulis ke baris yang sama
+  di sheet. Pencocokan memakai **kode kegiatan**, jadi aman bila ada baris/kolom yang disisipkan.
+- Angka ditulis sebagai **angka** (bukan teks), sehingga format rupiah dan rumus total di sheet tetap bekerja.
+  Baris **Total** tidak pernah ditimpa aplikasi.
+- Ringkasan total pagu, total realisasi, dan % serapan tampil di atas, plus pencarian kode/uraian.
+- Bagian ini juga ikut tercetak di **Pratinjau & Cetak** (tabel “D. Realisasi Keuangan” dengan total).
+- Kode yang tidak ditemukan di sheet dilaporkan sebagai baris gagal (tidak menulis ke baris lain).
+
 ### Minggu baru (tab minggu berikutnya)
 
 Menu **Sinkronisasi → Minggu baru** (atau tombol **+ Minggu baru** di bilah atas) membuat tab baru
@@ -50,7 +63,7 @@ di spreadsheet tanpa membuka Google Sheets:
 - Tab baru diletakkan tepat di samping tab sumber; tab lain tidak disentuh. Setelah dibuat, aplikasi
   otomatis pindah ke tab itu dan isian berikutnya langsung masuk ke tab baru.
 
-Fitur ini memakai aksi `buatTab` pada Apps Script **v1.6**. Bila skrip di spreadsheet masih versi lama,
+Fitur ini memakai aksi `buatTab` pada Apps Script **v1.7**. Bila skrip di spreadsheet masih versi lama,
 aplikasi menampilkan peringatan: salin ulang kode dari menu Sinkronisasi, lalu
 **Terapkan → Kelola deployment → Edit → Versi baru** (URL `/exec` tidak berubah).
 

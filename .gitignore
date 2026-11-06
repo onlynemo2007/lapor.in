@@ -5,3 +5,4 @@ tsconfig.tsbuildinfo
 .DS_Store
 .uji/uji-isi-lamp.mjs
 .uji/uji-pratinjau.mjs
+.uji/uji-keuangan-ui.mjs

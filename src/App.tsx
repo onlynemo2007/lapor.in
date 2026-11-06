@@ -4,6 +4,7 @@ import { ToastProvider } from "./components/ui";
 import DashboardView from "./views/DashboardView";
 import IsiView from "./views/IsiView";
 import PresensiView from "./views/PresensiView";
+import KeuanganView from "./views/KeuanganView";
 import PratinjauView from "./views/PratinjauView";
 import SinkronView from "./views/SinkronView";
 
@@ -14,6 +15,7 @@ function Router() {
       {view === "dashboard" && <DashboardView />}
       {view === "isi" && <IsiView params={params} />}
       {view === "presensi" && <PresensiView />}
+      {view === "keuangan" && <KeuanganView />}
       {view === "pratinjau" && <PratinjauView />}
       {view === "sinkron" && <SinkronView params={params} />}
     </Shell>

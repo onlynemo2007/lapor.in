@@ -88,7 +88,23 @@ export type Aplikasi = {
   cutiDl: number | null;
 };
 
-export type Anggaran = { kode: string; uraian: string; pagu: number; realisasi: number };
+export type Anggaran = {
+  kode: string;
+  uraian: string;
+  pagu: number;
+  realisasi: number;
+  /** nomor baris di sheet (bagian D) — diisi saat membaca tab */
+  baris?: number;
+};
+
+/** Kunci stabil satu baris realisasi keuangan (kode kegiatan). */
+export const angKey = (a: Anggaran) => a.kode;
+
+/** Persentase serapan anggaran (0 bila pagu belum diisi). */
+export const serapan = (realisasi: number, pagu: number) => (pagu > 0 ? (realisasi / pagu) * 100 : 0);
+
+export const totalAnggaran = (arr: Anggaran[]) =>
+  arr.reduce((t, a) => ({ pagu: t.pagu + a.pagu, realisasi: t.realisasi + a.realisasi }), { pagu: 0, realisasi: 0 });
 
 export type RowMap = {
   A: Record<string, number>;

@@ -1,0 +1,225 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { setKeuangan, useApp } from "../lib/store";
+import { parseAngka, rupiah, rupiahPendek, serapan, totalAnggaran } from "../lib/model";
+import { Btn, Card, I, Pill, SectionTitle, cx, useToast } from "../components/ui";
+import { StateGate } from "./common";
+import { jamSinkron } from "../lib/sync";
+
+type Draft = { uraian: string; pagu: string; realisasi: string };
+
+const angkaTeks = (n: number) => (n ? String(n) : "");
+const formatAngka = (v: string) => (v ? Number(v).toLocaleString("id-ID") : "");
+
+export default function KeuanganView() {
+  const { week, settings, updateWeek, reload, dibacaAt } = useApp();
+  const toast = useToast();
+  const [draft, setDraft] = useState<Record<string, Draft>>({});
+  const [cari, setCari] = useState("");
+  const awal = useRef<Record<string, Draft>>({});
+
+  // Muat isian dari sheet. Pembacaan ulang otomatis tidak boleh menimpa ketikan yang belum disimpan.
+  useEffect(() => {
+    if (!week) return;
+    const adaKetikan = Object.keys(draft).some((k) => {
+      const d = draft[k];
+      const a = awal.current[k];
+      return d && a && (d.uraian !== a.uraian || d.pagu !== a.pagu || d.realisasi !== a.realisasi);
+    });
+    if (adaKetikan) return;
+    const d: Record<string, Draft> = {};
+    week.anggaran.forEach((a) => {
+      d[a.kode] = { uraian: a.uraian, pagu: angkaTeks(a.pagu), realisasi: angkaTeks(a.realisasi) };
+    });
+    awal.current = d;
+    setDraft(d);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [week?.gid, week?.importedAt]);
+
+  const baris = week?.anggaran ?? [];
+  const total = useMemo(() => totalAnggaran(baris), [baris]);
+  const persen = serapan(total.realisasi, total.pagu);
+
+  const berubah = baris.filter((a) => {
+    const d = draft[a.kode];
+    if (!d) return false;
+    return d.uraian !== a.uraian || parseAngka(d.pagu) !== a.pagu || parseAngka(d.realisasi) !== a.realisasi;
+  });
+
+  if (!week) return <StateGate />;
+
+  const set = (kode: string, patch: Partial<Draft>) =>
+    setDraft((s) => ({ ...s, [kode]: { ...(s[kode] ?? { uraian: "", pagu: "", realisasi: "" }), ...patch } }));
+
+  const simpan = () => {
+    if (!berubah.length) return;
+    updateWeek((w) => {
+      let next = w;
+      berubah.forEach((a) => {
+        const d = draft[a.kode];
+        next = setKeuangan(
+          next,
+          a.kode,
+          { uraian: d.uraian.trim() || a.uraian, pagu: parseAngka(d.pagu), realisasi: parseAngka(d.realisasi) },
+          settings.nama,
+        );
+      });
+      return next;
+    });
+    awal.current = { ...draft };
+    toast(
+      `Realisasi keuangan tersimpan · ${berubah.length} baris${settings.scriptUrl && settings.token && settings.autoSync ? " · langsung ke Sheet" : ""}`,
+    );
+  };
+
+  const tampil = baris.filter((a) => {
+    const q = cari.trim().toLowerCase();
+    return !q || a.kode.toLowerCase().includes(q) || a.uraian.toLowerCase().includes(q);
+  });
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-[13px] font-medium text-muted">Bagian D — realisasi keuangan</p>
+          <h1 className="mt-1 text-[24px] font-extrabold tracking-tight sm:text-[28px]">Realisasi keuangan</h1>
+          <p className="mt-1 max-w-[640px] text-[13px] leading-relaxed text-muted">
+            Isi <b>pagu</b> dan <b>realisasi</b> tiap kode kegiatan. Nilainya ditulis ke baris yang sama di bagian D
+            sheet (dicocokkan lewat kode, jadi aman bila ada baris disisipkan). Rumus total di sheet tidak diubah.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-[11.5px] text-muted">{dibacaAt ? `Data sheet ${jamSinkron(dibacaAt)}` : ""}</p>
+          <Btn variant="ghost" size="sm" onClick={() => void reload(undefined, true)} title="Ambil isi terbaru dari Google Sheet">
+            <I.refresh className="h-4 w-4" /> Ambil data terbaru
+          </Btn>
+          <Btn variant="brand" onClick={simpan} disabled={!berubah.length}>
+            <I.check className="h-4 w-4" />
+            Simpan{berubah.length ? ` (${berubah.length})` : ""}
+          </Btn>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {(
+          [
+            ["Total pagu", rupiah(total.pagu), "neutral"],
+            ["Total realisasi", rupiah(total.realisasi), "brand"],
+            ["Serapan", `${persen.toFixed(1).replace(".", ",")}%`, persen >= 80 ? "brand" : "warn"],
+          ] as const
+        ).map(([label, nilai, tone]) => (
+          <Card key={label} className="p-4">
+            <p className="text-[11.5px] font-semibold uppercase tracking-wider text-muted">{label}</p>
+            <p className="mt-1 text-[19px] font-extrabold leading-tight">{nilai}</p>
+            <div className="mt-2">
+              <Pill tone={tone as "neutral" | "brand" | "warn"}>{baris.length} baris</Pill>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="p-4 sm:p-5">
+        <SectionTitle
+          title="Rincian kegiatan"
+          sub={baris.length ? `${baris.length} kode · ketik nilai lalu Simpan` : "Tabel bagian D belum terbaca"}
+          right={
+            <div className="flex items-center gap-2">
+              <label className="relative">
+                <input
+                  value={cari}
+                  onChange={(e) => setCari(e.target.value)}
+                  placeholder="Cari kode / uraian…"
+                  className="h-9 w-[190px] rounded-lg border border-line bg-white pl-8 pr-2 text-[12.5px] outline-none focus:border-brand"
+                />
+                <I.sheet className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted" />
+              </label>
+            </div>
+          }
+        />
+
+        {baris.length === 0 ? (
+          <p className="mt-3 rounded-xl bg-paper p-4 text-[13px] leading-relaxed text-muted">
+            Tabel realisasi keuangan (bagian D) tidak ditemukan di tab ini. Pastikan baris judul kolom memuat{" "}
+            <span className="font-mono">Kode</span>, <span className="font-mono">Uraian</span>,{" "}
+            <span className="font-mono">Pagu</span>, dan <span className="font-mono">Realisasi</span>, lalu tekan{" "}
+            <b>Ambil data terbaru</b>.
+          </p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[720px] border-collapse text-[12.5px]">
+              <thead>
+                <tr className="border-b border-line text-left text-[11px] uppercase tracking-wider text-muted">
+                  <th className="w-[112px] py-2 pr-2 font-semibold">Kode</th>
+                  <th className="py-2 pr-2 font-semibold">Uraian kegiatan</th>
+                  <th className="w-[150px] py-2 pr-2 text-right font-semibold">Pagu (Rp)</th>
+                  <th className="w-[150px] py-2 pr-2 text-right font-semibold">Realisasi (Rp)</th>
+                  <th className="w-[92px] py-2 text-right font-semibold">Serapan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tampil.map((a) => {
+                  const d = draft[a.kode] ?? { uraian: a.uraian, pagu: angkaTeks(a.pagu), realisasi: angkaTeks(a.realisasi) };
+                  const pagu = parseAngka(d.pagu);
+                  const real = parseAngka(d.realisasi);
+                  const p = serapan(real, pagu);
+                  const kotor = d.uraian !== a.uraian || pagu !== a.pagu || real !== a.realisasi;
+                  return (
+                    <tr key={a.kode} className={cx("border-b border-line/70 align-top", kotor && "bg-warn-soft/40")}>
+                      <td className="py-2 pr-2 font-mono text-[11.5px] text-muted">{a.kode}</td>
+                      <td className="py-2 pr-2">
+                        <input
+                          value={d.uraian}
+                          onChange={(e) => set(a.kode, { uraian: e.target.value })}
+                          className="w-full rounded-lg border border-transparent bg-transparent px-1.5 py-1 text-[12.5px] outline-none transition hover:border-line focus:border-brand focus:bg-white"
+                        />
+                      </td>
+                      <td className="py-2 pr-2">
+                        <input
+                          value={formatAngka(d.pagu)}
+                          onChange={(e) => set(a.kode, { pagu: e.target.value.replace(/[^\d]/g, "") })}
+                          inputMode="numeric"
+                          placeholder="0"
+                          className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-right font-mono text-[12px] outline-none focus:border-brand"
+                        />
+                      </td>
+                      <td className="py-2 pr-2">
+                        <input
+                          value={formatAngka(d.realisasi)}
+                          onChange={(e) => set(a.kode, { realisasi: e.target.value.replace(/[^\d]/g, "") })}
+                          inputMode="numeric"
+                          placeholder="0"
+                          className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-right font-mono text-[12px] outline-none focus:border-brand"
+                        />
+                      </td>
+                      <td className="py-2 text-right">
+                        <span className={cx("font-mono text-[12px] font-bold", p >= 100 ? "text-brand" : p > 0 ? "text-ink" : "text-muted")}>
+                          {p ? `${p.toFixed(1).replace(".", ",")}%` : "—"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="text-[12.5px] font-bold">
+                  <td className="py-3 pr-2" colSpan={2}>
+                    Total ({tampil.length} baris)
+                  </td>
+                  <td className="py-3 pr-2 text-right font-mono">{rupiah(total.pagu)}</td>
+                  <td className="py-3 pr-2 text-right font-mono">{rupiah(total.realisasi)}</td>
+                  <td className="py-3 text-right font-mono">{persen ? `${persen.toFixed(1).replace(".", ",")}%` : "—"}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+
+        {baris.length > 0 && (
+          <p className="mt-3 text-[11.5px] leading-relaxed text-muted">
+            Ringkas: pagu {rupiahPendek(total.pagu)} · realisasi {rupiahPendek(total.realisasi)}. Kolom{" "}
+            <b>Total</b> di sheet tetap memakai rumusnya sendiri — aplikasi hanya menulis baris kegiatan yang Anda ubah.
+          </p>
+        )}
+      </Card>
+    </div>
+  );
+}

@@ -120,7 +120,7 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
       }
     }
     if (r.some((x) => /^Rekapitulasi Penggunaan Aplikasi Presensi/i.test(x.trim()))) return void (sec = "P");
-    if (r.some((x) => /^Realisasi Anggaran/i.test(x.trim()))) return void (sec = "R");
+    if (r.some((x) => /^Realisasi (Anggaran|Keuangan)/i.test(x.trim()))) return void (sec = "R");
 
     /* ---- baris judul kolom ---- */
     if (sec === "A") {
@@ -169,7 +169,7 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
         return;
       }
     }
-    if (sec === "R") {
+    if (sec === "R" || sec === "D") {
       const k = has(r, (x) => x === "kode"), p = has(r, (x) => x === "pagu");
       if (k >= 0 && p >= 0) {
         const u = has(r, (x) => x.startsWith("uraian")), re = has(r, (x) => x === "realisasi");
@@ -226,10 +226,16 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
       if (isTanggal(cell(c.cTgl))) cList.push({ tgl: cell(c.cTgl), row: sheetRow, r });
     } else if (sec === "P") {
       if (isTanggal(cell(c.pTgl))) pList.push({ tgl: cell(c.pTgl), row: sheetRow, r });
-    } else if (sec === "R") {
+    } else if (sec === "R" || sec === "D") {
       const kode = cell(c.rKode), ur = cell(c.rUr);
       if (kode && ur && norm(kode) !== "kode" && cell(c.rPagu)) {
-        const a: Anggaran = { kode, uraian: ur, pagu: parseAngka(cell(c.rPagu)), realisasi: parseAngka(cell(c.rReal)) };
+        const a: Anggaran = {
+          kode,
+          uraian: ur,
+          pagu: parseAngka(cell(c.rPagu)),
+          realisasi: parseAngka(cell(c.rReal)),
+          baris: sheetRow,
+        };
         if (a.pagu > 0) w.anggaran.push(a);
       }
     }
@@ -288,6 +294,7 @@ export function mergeWeek(fresh: WeekData, local?: WeekData): WeekData {
     rencana: { ...fresh.rencana },
     presensi: { ...fresh.presensi },
     aplikasi: { ...fresh.aplikasi },
+    anggaran: [...fresh.anggaran],
     dirty: { ...local.dirty },
     meta: { ...local.meta },
     syncedAt: local.syncedAt,
@@ -304,6 +311,13 @@ export function mergeWeek(fresh: WeekData, local?: WeekData): WeekData {
     if (cat === "B") pick(local.rencana, out.rencana);
     if (cat === "C") pick(local.presensi, out.presensi);
     if (cat === "P") pick(local.aplikasi, out.aplikasi);
+    if (cat === "R") {
+      // realisasi keuangan yang belum terkirim tetap dipakai (dicocokkan lewat kode)
+      const lokal = local.anggaran.find((a) => a.kode === k);
+      const i = out.anggaran.findIndex((a) => a.kode === k);
+      if (lokal && i >= 0) out.anggaran[i] = { ...lokal, baris: out.anggaran[i].baris };
+      else if (lokal) out.anggaran.push(lokal);
+    }
   });
   return out;
 }
@@ -428,11 +442,13 @@ export type Payload = {
   rencana: { tim: string; uraian: string }[];
   presensi: { tanggal: string; idx: number; nilai: string[] }[];
   aplikasi: { tanggal: string; idx: number; nilai: string[] }[];
+  /** bagian D — realisasi keuangan per kode kegiatan */
+  keuangan: { kode: string; uraian: string; pagu: number; realisasi: number }[];
 };
 
 export function buildPayload(w: WeekData, token: string, oleh: string, hanyaBerubah: boolean): Payload {
   const inc = (k: string) => !hanyaBerubah || !!w.dirty[k];
-  const p: Payload = { token, gid: w.gid, oleh, kegiatan: [], lampiran: [], rencana: [], presensi: [], aplikasi: [] };
+  const p: Payload = { token, gid: w.gid, oleh, kegiatan: [], lampiran: [], rencana: [], presensi: [], aplikasi: [], keuangan: [] };
 
   SLOT_ROWS.forEach(({ tim, sub }) => {
     w.dates.forEach((d) => {
@@ -458,6 +474,11 @@ export function buildPayload(w: WeekData, token: string, oleh: string, hanyaBeru
     const items = w.rencana[t.id] ?? [];
     if (inc(`B:${t.id}`) && (items.length || hanyaBerubah)) p.rencana.push({ tim: t.id, uraian: joinUraian(items) });
   });
+  // bagian D: hanya baris yang diubah (atau semua saat kirim ulang penuh)
+  w.anggaran.forEach((a) => {
+    if (!a.kode) return;
+    if (inc(`R:${a.kode}`)) p.keuangan.push({ kode: a.kode, uraian: a.uraian, pagu: a.pagu, realisasi: a.realisasi });
+  });
   w.dates.forEach((d, idx) => {
     const k = norm(d);
     const pr = w.presensi[k];
@@ -470,7 +491,7 @@ export function buildPayload(w: WeekData, token: string, oleh: string, hanyaBeru
 }
 
 export const payloadCount = (p: Payload) =>
-  p.kegiatan.length + p.lampiran.length + p.rencana.length + p.presensi.length + p.aplikasi.length;
+  p.kegiatan.length + p.lampiran.length + p.rencana.length + p.presensi.length + p.aplikasi.length + (p.keuangan?.length ?? 0);
 
 export type ScriptResult = {
   ok: boolean;
@@ -532,7 +553,7 @@ export async function kirimKeScript(url: string, payload: Payload, batasMs = 250
 }
 
 /** Versi kode Apps Script yang disalin dari aplikasi (harus sama dengan `VERSI` di skrip). */
-export const SCRIPT_VERSI = "1.6";
+export const SCRIPT_VERSI = "1.7";
 
 export type BuatTabResult = {
   ok: boolean;
@@ -625,6 +646,8 @@ export const APPS_SCRIPT = `/**
  * lama tidak pernah terhapus kecuali aplikasi mengirim perintah ganti.
  * v1.6 menulis tautan ke BARIS TANGGALNYA masing-masing (bukan menumpuk di satu
  * sel), dan membuka sel gabungan (merge) pada kolom lampiran lebih dulu.
+ * v1.7 menulis bagian D (realisasi keuangan): pagu & realisasi per kode kegiatan
+ * langsung ke barisnya, dicocokkan lewat kode (aman bila ada baris disisipkan).
  */
 const TOKEN = 'GANTI-DENGAN-KODE-RAHASIA'; // samakan dengan isian di aplikasi
 const VERSI = '${SCRIPT_VERSI}';
@@ -671,6 +694,13 @@ function doPost(e) {
       n += tulisLampiran(sh, barisLamp, k.lamp, x.url, x.gabung !== false, m, x.tim, x.sub);
     });
     (d.rencana || []).forEach(function (x) { tulis(m.B[x.tim], [k.bUr], [x.uraian], 'rencana ' + x.tim); });
+    (d.keuangan || []).forEach(function (x) {
+      const kode = String(x.kode || '').trim();
+      if (!kode) { gagal.push('keuangan: kode kosong'); return; }
+      const baris = m.Rkode[rapi(kode)];
+      if (!baris) { gagal.push('keuangan ' + kode); return; }
+      n += tulisBaris(sh, baris, [k.rKode, k.rUr, k.rPagu, k.rReal], [kode, x.uraian, angkaNomor(x.pagu), angkaNomor(x.realisasi)]);
+    });
     (d.presensi || []).forEach(function (x) { tulis(m.C[x.tanggal] || m.Cidx[x.idx], [k.cHadir, k.cTk, k.cDl, k.cCuti], x.nilai, 'presensi ' + x.tanggal); });
     (d.aplikasi || []).forEach(function (x) { tulis(m.P[x.tanggal] || m.Pidx[x.idx], [k.pSikepo, k.pEp, k.pFp, k.pTidak, k.pCutiDl], x.nilai, 'aplikasi ' + x.tanggal); });
 
@@ -689,10 +719,21 @@ function cariTab(ss, gid) {
   return null;
 }
 
+/** Angka rupiah dari payload (boleh angka atau teks "1.250.000" / "1.250.000,50"). */
+function angkaNomor(v) {
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  const t = String(v === null || v === undefined ? '' : v).replace(/[^0-9,.-]/g, '');
+  if (!t) return 0;
+  const n = Number(t.split('.').join('').replace(',', '.'));
+  return isFinite(n) ? n : 0;
+}
+
 /** Tulis beberapa kolom pada satu baris. Kolom berurutan disatukan agar cepat (cocok untuk sinkron otomatis). */
 function tulisBaris(sh, row, cols, vals) {
   const pasangan = cols.map(function (c, i) {
-    return [c, vals[i] === null || vals[i] === undefined ? '' : String(vals[i])];
+    const v = vals[i];
+    // angka ditulis sebagai angka (bukan teks) supaya rumus & format rupiah tetap bekerja
+    return [c, v === null || v === undefined || v === '' ? '' : (typeof v === 'number' ? v : String(v))];
   }).sort(function (a, b) { return a[0] - b[0]; });
   let n = 0, mulai = pasangan[0][0], buf = [pasangan[0][1]];
   const siram = function () {
@@ -711,9 +752,9 @@ function tulisBaris(sh, row, cols, vals) {
 /** Membaca struktur tab: bagian A–C, posisi kolom, tim, sub (Program/Monev), dan tanggal. */
 function petakan(sh) {
   const v = sh.getDataRange().getDisplayValues();
-  const m = { A: {}, L: {}, B: {}, C: {}, P: {}, Cidx: [], Pidx: [],
+  const m = { A: {}, L: {}, B: {}, C: {}, P: {}, Cidx: [], Pidx: [], Rkode: {},
     col: { tim: 2, tgl: 3, ur: 4, lamp: 9, bTim: 2, bUr: 3, cTgl: 2, cHadir: 3, cTk: 4, cDl: 5, cCuti: 6,
-           pTgl: 2, pSikepo: 3, pEp: 4, pFp: 5, pTidak: 6, pCutiDl: 7 } };
+           pTgl: 2, pSikepo: 3, pEp: 4, pFp: 5, pTidak: 6, pCutiDl: 7, rKode: 1, rUr: 2, rPagu: 3, rReal: 4 } };
   const c = m.col;
   const tglRe = /^\\d{1,2} (januari|februari|maret|april|mei|juni|juli|agustus|september|oktober|november|desember) \\d{4}$/;
   const n = s => String(s || '').toLowerCase().replace(/\\s+/g, ' ').trim();
@@ -729,7 +770,7 @@ function petakan(sh) {
     }
     if (marker) continue;
     if (r.some(x => /^rekapitulasi penggunaan aplikasi presensi/i.test(String(x).trim()))) { sec = 'P'; continue; }
-    if (r.some(x => /^realisasi anggaran/i.test(String(x).trim()))) { sec = 'R'; continue; }
+    if (r.some(x => /^realisasi (anggaran|keuangan)/i.test(String(x).trim()))) { sec = 'R'; continue; }
 
     if (sec === 'A') {
       const t = cari(r, x => x === 'tim'), g = cari(r, x => x.indexOf('tanggal') === 0), u = cari(r, x => x.indexOf('uraian') === 0);
@@ -758,6 +799,15 @@ function petakan(sh) {
       if (t >= 0 && u >= 0) { c.bTim = t; c.bUr = u; continue; }
       const T = cell(c.bTim);
       if (T && n(T) !== 'tim') m.B[timDari(T)] = row;
+    } else if (sec === 'R' || sec === 'D') {
+      const k = cari(r, x => x === 'kode'), p = cari(r, x => x === 'pagu');
+      if (k >= 0 && p >= 0) {
+        const u = cari(r, x => x.indexOf('uraian') === 0), re = cari(r, x => x === 'realisasi');
+        c.rKode = k; c.rPagu = p; c.rUr = u >= 0 ? u : k + 1; c.rReal = re >= 0 ? re : p + 1;
+        continue;
+      }
+      const kode = cell(c.rKode);
+      if (kode && n(kode) !== 'kode' && !/^total/i.test(n(kode))) m.Rkode[n(kode)] = row;
     } else if (sec === 'C') {
       const g = cari(r, x => x === 'tanggal'), h = cari(r, x => x.indexOf('kehadiran') === 0);
       if (g >= 0 && h >= 0) {

@@ -21,6 +21,10 @@ const CSV = [
   "No,,Tanggal,Kehadiran,Tidak Masuk,Dinas Luar,Cuti,,,",
   ",,3 November 2025,,,,,,",
   ",,4 November 2025,,,,,,",
+  ",,D,REALISASI KEUANGAN,,,,,",
+  "No,Kode,Uraian,Pagu,Realisasi,,,,",
+  "1,032.12.01,Perjalanan dinas,100000000,25000000,,,,",
+  ",,Total,100000000,25000000,,,,",
 ].join("\n");
 
 let aktif: ReturnType<typeof useApp> | null = null;
@@ -77,6 +81,8 @@ async function main() {
   cek("tautan tanggal 3 di baris tanggal 3", !!r3 && (r3.textContent ?? "").includes("3 November 2025"), r3?.textContent);
   cek("tautan tanggal 3 tidak menumpang di baris tanggal 4", !!r4 && !(r4.textContent ?? "").includes("AAA"), r4?.textContent);
   cek("tautan tanggal 4 di baris tanggal 4", !!r4 && (r4.textContent ?? "").includes("4 November 2025"), r4?.textContent);
+
+  cek("bagian D ikut tercetak", /D\. Realisasi Keuangan/.test(document.body.textContent ?? "") && (document.body.textContent ?? "").includes("032.12.01"), "");
 
   /* tombol ambil data terbaru memicu pembacaan lagi */
   const sebelum = jumlahBaca;

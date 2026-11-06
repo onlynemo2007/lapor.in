@@ -478,6 +478,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
         dirty[`L:${lampKey(tim.id, sub)}`] = true;
       });
+      w.anggaran.forEach((a) => {
+        if (a.kode) dirty[`R:${a.kode}`] = true;
+      });
       TIMS.forEach((t) => {
         dirty[`B:${t.id}`] = true;
       });
@@ -759,6 +762,18 @@ export function setLampiran(w: WeekData, k: string, url: string, oleh: string): 
     lampiran,
     dirty: { ...w.dirty, [`L:${k}`]: true },
     meta,
+  };
+}
+
+/** Ubah satu baris realisasi keuangan (bagian D) — pagu, realisasi, atau uraiannya. */
+export function setKeuangan(w: WeekData, kode: string, patch: { uraian?: string; pagu?: number; realisasi?: number }, oleh: string): WeekData {
+  if (!w.anggaran.some((a) => a.kode === kode)) return w;
+  const anggaran = w.anggaran.map((a) => (a.kode === kode ? { ...a, ...patch } : a));
+  return {
+    ...w,
+    anggaran,
+    dirty: { ...w.dirty, [`R:${kode}`]: true },
+    meta: { ...w.meta, [`R:${kode}`]: { oleh, at: Date.now() } },
   };
 }
 

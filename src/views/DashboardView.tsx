@@ -316,7 +316,18 @@ export default function DashboardView() {
         </Card>
 
         <Card className="p-5">
-          <SectionTitle title="Realisasi anggaran" sub="Bagian D — dibaca dari tab ini" right={total ? <Pill tone={realPct > 0 ? "brand" : "neutral"}>{realPct.toFixed(1).replace(".", ",")}%</Pill> : undefined} />
+          <SectionTitle
+            title="Realisasi anggaran"
+            sub="Bagian D — dibaca dari tab ini"
+            right={
+              <div className="flex items-center gap-2">
+                {total ? <Pill tone={realPct > 0 ? "brand" : "neutral"}>{realPct.toFixed(1).replace(".", ",")}%</Pill> : null}
+                <Btn variant="ghost" size="sm" onClick={() => go("keuangan")}>
+                  Isi realisasi <I.chev className="h-3.5 w-3.5" />
+                </Btn>
+              </div>
+            }
+          />
           {anggaran.length === 0 ? (
             <p className="rounded-xl bg-paper p-4 text-[13px] text-muted">Tabel realisasi anggaran tidak ditemukan di tab ini.</p>
           ) : (

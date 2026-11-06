@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useApp } from "../lib/store";
 import { type Aplikasi, type Presensi, TOTAL_PEGAWAI, emptyAplikasi, emptyPresensi, hariDari, norm, tanggalPendek, totalPresensi } from "../lib/model";
 import { Btn, Card, I, Pill, SectionTitle, cx, useToast } from "../components/ui";
@@ -17,8 +17,20 @@ export default function PresensiView() {
   const [apl, setApl] = useState<Record<string, Aplikasi>>({});
   const [buka, setBuka] = useState<string>("");
 
+  // isian yang sedang diketik tidak boleh tertimpa pembacaan ulang sheet otomatis
+  const awal = useRef<{ p: Record<string, Presensi>; a: Record<string, Aplikasi> }>({ p: {}, a: {} });
   useEffect(() => {
     if (!week) return;
+    const beda = week.dates.some((d) => {
+      const k = norm(d);
+      const p0 = awal.current.p[k];
+      const a0 = awal.current.a[k];
+      return (
+        (!!p0 && !!pres[k] && JSON.stringify(pres[k]) !== JSON.stringify(p0)) ||
+        (!!a0 && !!apl[k] && JSON.stringify(apl[k]) !== JSON.stringify(a0))
+      );
+    });
+    if (beda) return;
     const p: Record<string, Presensi> = {};
     const a: Record<string, Aplikasi> = {};
     week.dates.forEach((d) => {
@@ -26,6 +38,7 @@ export default function PresensiView() {
       p[k] = { ...(week.presensi[k] ?? emptyPresensi()) };
       a[k] = { ...(week.aplikasi[k] ?? emptyAplikasi()) };
     });
+    awal.current = { p, a };
     setPres(p);
     setApl(a);
     // eslint-disable-next-line react-hooks/exhaustive-deps

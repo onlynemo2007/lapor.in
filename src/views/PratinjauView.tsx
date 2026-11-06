@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useApp } from "../lib/store";
-import { TIMS, TOTAL_PEGAWAI, joinUraian, lampKey, lampiranTanggal, norm, slotKey } from "../lib/model";
+import { TIMS, TOTAL_PEGAWAI, joinUraian, lampKey, lampiranTanggal, norm, rupiah, serapan, slotKey, totalAnggaran } from "../lib/model";
 import { presensiCells } from "../lib/sheet";
 import { jamSinkron } from "../lib/sync";
 import { Btn, I } from "../components/ui";
@@ -199,6 +199,52 @@ export default function PratinjauView() {
             })}
           </tbody>
         </table>
+
+        {/* D — realisasi keuangan */}
+        {week.anggaran.length > 0 && (
+          <>
+            <h2 className="mt-7 text-[13px] font-bold">D. Realisasi Keuangan</h2>
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full min-w-[560px] border-collapse">
+                <thead>
+                  <tr>
+                    <th className={`${th} w-10`}>No</th>
+                    <th className={`${th} w-[100px]`}>Kode</th>
+                    <th className={th}>Uraian</th>
+                    <th className={`${th} w-[120px]`}>Pagu (Rp)</th>
+                    <th className={`${th} w-[120px]`}>Realisasi (Rp)</th>
+                    <th className={`${th} w-[64px]`}>%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {week.anggaran.map((a, i) => (
+                    <tr key={a.kode + i}>
+                      <td className={`${td} text-center`}>{i + 1}</td>
+                      <td className={`${td} whitespace-nowrap font-mono text-[10.5px]`}>{a.kode}</td>
+                      <td className={td}>{a.uraian}</td>
+                      <td className={`${td} whitespace-nowrap text-right`}>{a.pagu ? rupiah(a.pagu) : ""}</td>
+                      <td className={`${td} whitespace-nowrap text-right`}>{a.realisasi ? rupiah(a.realisasi) : ""}</td>
+                      <td className={`${td} text-right`}>{a.pagu ? `${serapan(a.realisasi, a.pagu).toFixed(1).replace(".", ",")}%` : ""}</td>
+                    </tr>
+                  ))}
+                  <tr className="font-bold">
+                    <td className={`${td} text-right`} colSpan={3}>
+                      Total
+                    </td>
+                    <td className={`${td} whitespace-nowrap text-right`}>{rupiah(totalAnggaran(week.anggaran).pagu)}</td>
+                    <td className={`${td} whitespace-nowrap text-right`}>{rupiah(totalAnggaran(week.anggaran).realisasi)}</td>
+                    <td className={`${td} text-right`}>
+                      {serapan(totalAnggaran(week.anggaran).realisasi, totalAnggaran(week.anggaran).pagu)
+                        .toFixed(1)
+                        .replace(".", ",")}
+                      %
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
 
         <p className="mt-8 text-right text-[10.5px] text-muted">
           Disusun dengan Lapor.in · {settings.nama || "—"} · {new Date().toLocaleString("id-ID", { dateStyle: "long", timeStyle: "short" })}

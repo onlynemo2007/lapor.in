@@ -105,6 +105,23 @@ class SS {
   moveActiveSheet(pos) { const i = this.sheets.indexOf(this.aktif); if (i < 0) return; this.sheets.splice(i, 1); this.sheets.splice(Math.max(0, pos - 1), 0, this.aktif); }
 }
 
+/** Lingkungan dengan isi tab bebas (dipakai untuk uji bagian lain, mis. realisasi keuangan). */
+export function lingkunganDari(isiGrid, nama = "Nov I") {
+  const ss = new SS();
+  const sumber = new Sheet(ss, nama, isiGrid);
+  sumber.id = Number(GID);
+  const audit = new Sheet(ss, "_audit", []);
+  audit.hidden = true;
+  ss.sheets.push(sumber, audit);
+  ss.aktif = sumber;
+  return {
+    ss, sumber,
+    SpreadsheetApp: { getActiveSpreadsheet: () => ss },
+    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
+    ContentService: { MimeType: { JSON: "json" }, createTextOutput: (s) => ({ setMimeType() { return this; }, getContent: () => s }) },
+  };
+}
+
 export function lingkungan(linkSel) {
   const ss = new SS();
   const sumber = new Sheet(ss, "Nov I", grid(linkSel));

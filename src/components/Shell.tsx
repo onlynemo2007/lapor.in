@@ -4,12 +4,13 @@ import { SPREADSHEET_ID, TIMS } from "../lib/model";
 import { Btn, I, Logo, Spinner, cx } from "./ui";
 import { StatusSinkron } from "./SyncBadge";
 
-export type View = "dashboard" | "isi" | "presensi" | "pratinjau" | "sinkron";
+export type View = "dashboard" | "isi" | "presensi" | "keuangan" | "pratinjau" | "sinkron";
 
 export const NAV: { id: View; label: string; short: string; icon: keyof typeof I }[] = [
   { id: "dashboard", label: "Dashboard", short: "Dashboard", icon: "home" },
   { id: "isi", label: "Isi Laporan", short: "Isi", icon: "pen" },
   { id: "presensi", label: "Presensi", short: "Presensi", icon: "users" },
+  { id: "keuangan", label: "Realisasi Keuangan", short: "Keuangan", icon: "money" },
   { id: "pratinjau", label: "Pratinjau & Cetak", short: "Pratinjau", icon: "doc" },
   { id: "sinkron", label: "Sinkronisasi", short: "Sinkron", icon: "sync" },
 ];
@@ -192,7 +193,7 @@ export default function Shell({ view, children }: { view: View; children: ReactN
 
       {/* bottom nav (HP) */}
       <nav className="no-print fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
-        <div className="grid grid-cols-5">
+        <div className="grid grid-cols-6">
           {NAV.map((n) => {
             const Icon = I[n.icon];
             const on = view === n.id;
