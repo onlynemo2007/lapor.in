@@ -22,6 +22,20 @@ export default function DashboardView() {
 
   const r = useMemo(() => (week ? ringkas(week) : null), [week]);
 
+  // rincian baris bagian A yang benar-benar terbaca dari sheet (untuk menelusuri data yang tidak muncul)
+  const rincianA = useMemo(
+    () =>
+      !week
+        ? []
+        : Object.entries(week.rows.A)
+            .map(([k, baris]) => {
+              const [tim, sub, tgl] = k.split("|");
+              return { k, baris, tim, sub, tgl, items: week.kegiatan[k] ?? [] };
+            })
+            .sort((a, b) => a.baris - b.baris),
+    [week],
+  );
+
   if (!week || !r) return <StateGate />;
 
   const pct = r.slotTotal ? Math.round((r.slotTerisi / r.slotTotal) * 100) : 0;
@@ -208,6 +222,31 @@ export default function DashboardView() {
               })}
             </tbody>
           </table>
+          <details className="mt-3 rounded-lg border border-line px-3 py-2">
+            <summary className="cursor-pointer text-[11.5px] font-semibold text-muted">
+              Rincian pembacaan sheet (diagnosa) · {rincianA.length} baris bagian A · {week.dates.length} tanggal
+            </summary>
+            <div className="mt-2 space-y-0.5 text-[11px] leading-relaxed text-muted">
+              <p className="font-semibold text-ink">Tab {week.tab}</p>
+              {rincianA.length === 0 && <p>Belum ada baris bagian A yang terbaca.</p>}
+              {rincianA.slice(0, 60).map((x) => (
+                <p key={x.k} className="truncate" title={x.items.join(" · ")}>
+                  baris {x.baris} · {slotLabel(x.tim, x.sub)} · {x.tgl} · {x.items.length ? `${x.items.length} butir` : "kosong"}
+                </p>
+              ))}
+              {rincianA.length > 60 && <p>… {rincianA.length - 60} baris lainnya</p>}
+              {!!week.takTerbaca?.length && (
+                <>
+                  <p className="pt-1 font-semibold text-[#8a5a12]">Dilewati ({week.takTerbaca.length})</p>
+                  {week.takTerbaca.map((t) => (
+                    <p key={t.baris} className="truncate" title={t.teks}>
+                      baris {t.baris} · {t.teks}
+                    </p>
+                  ))}
+                </>
+              )}
+            </div>
+          </details>
           {!!week.takTerbaca?.length && (
             <p
               className="mt-3 flex items-start gap-1.5 rounded-lg bg-warn-soft px-3 py-2 text-[11.5px] leading-relaxed text-[#8a5a12]"

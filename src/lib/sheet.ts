@@ -307,8 +307,18 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
       timSel = "";
       return;
     }
-    if (r.some((x) => /^Rekapitulasi Penggunaan Aplikasi Presensi/i.test(x.trim()))) return void (sec = "P");
-    if (r.some((x) => /\brealisasi (anggaran|keuangan)/i.test(x))) return void (sec = "R");
+    // Baris JUDUL tabel lain hanya boleh memindahkan bagian. Baris data di bagian A tidak boleh:
+    // uraian kegiatan seperti "Monev realisasi anggaran" pernah membuat sisa tab ikut terbuang.
+    const judulTabel = (re: RegExp) => {
+      const j = r.findIndex((x) => re.test((x ?? "").trim()));
+      if (j < 0) return false;
+      if (sec !== "A") return true;
+      // di bagian A: bukan baris data (tidak ada tanggal & frasa bukan di kolom uraian)
+      if (j === c.ur || j === c.lamp) return false;
+      return !tanggalDariTeks(cell(c.tgl));
+    };
+    if (judulTabel(/^Rekapitulasi Penggunaan Aplikasi Presensi/i)) return void (sec = "P");
+    if (judulTabel(/\brealisasi (anggaran|keuangan)/i)) return void (sec = "R");
 
     /* ---- baris judul kolom ---- */
     if (sec === "A") {

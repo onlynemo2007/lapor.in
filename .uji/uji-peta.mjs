@@ -157,6 +157,41 @@ const cek = (nama, lulus, info = "") => {
   cek("satu-satunya tanggal tetap terbaca", w.dates.length === 1, JSON.stringify(w.dates));
 }
 
+
+/* ---------- 9. uraian kegiatan tidak boleh memindahkan bagian ---------- */
+{
+  const csv = [
+    "LAPORAN MINGGU I BULAN NOVEMBER 2026,,,,,,",
+    ",,A,KEGIATAN TIM,,,,",
+    "No,,Tim,Tanggal,Uraian,,,",
+    ',,Program dan Monev,2 November 2026,"Monev realisasi anggaran TW IV",,,',
+    ',,Program dan Monev,3 November 2026,"p2",,,',
+    ',,Humas Datin,2 November 2026,"h1",,,',
+    ',,Hukum,2 November 2026,"k1",,,',
+    ",,C,REKAPITULASI KEHADIRAN,,,,",
+    "No,,Tanggal,Kehadiran,Tidak Masuk,Dinas Luar,Cuti,,",
+    ",,2 November 2026,50,,,,,",
+  ].join("\n");
+  const w = parseWeek(csv, "1", "Nov I");
+  cek("uraian 'realisasi anggaran' tidak memotong bagian A (program)", (w.kegiatan["program|program|2 november 2026"] ?? []).length === 1, JSON.stringify(Object.keys(w.kegiatan)));
+  cek("uraian 'realisasi anggaran' tidak memotong bagian A (humas)", (w.kegiatan["humas||2 november 2026"] ?? []).length === 1, JSON.stringify(Object.keys(w.kegiatan)));
+  cek("uraian 'realisasi anggaran' tidak memotong bagian A (hukum)", (w.kegiatan["hukum||2 november 2026"] ?? []).length === 1, JSON.stringify(Object.keys(w.kegiatan)));
+  cek("bagian C tetap terbaca setelahnya", !!w.presensi["2 november 2026"], JSON.stringify(w.presensi));
+}
+
+/* ---------- 10. uraian 'Rekapitulasi Penggunaan Aplikasi Presensi' tidak memotong A ---------- */
+{
+  const csv = [
+    "LAPORAN MINGGU I BULAN NOVEMBER 2026,,,,,,",
+    ",,A,KEGIATAN TIM,,,,",
+    "No,,Tim,Tanggal,Uraian,,,",
+    ',,Keuangan,2 November 2026,"Rekapitulasi Penggunaan Aplikasi Presensi",,,',
+    ',,Humas Datin,2 November 2026,"h1",,,',
+  ].join("\n");
+  const w = parseWeek(csv, "1", "Nov I");
+  cek("uraian presensi tidak memotong bagian A", (w.kegiatan["humas||2 november 2026"] ?? []).length === 1, JSON.stringify(Object.keys(w.kegiatan)));
+}
+
 const lulus = hasil.filter((h) => h.lulus).length;
 console.log(`\n${lulus}/${hasil.length} uji peta kegiatan lulus`);
 process.exit(lulus === hasil.length ? 0 : 1);

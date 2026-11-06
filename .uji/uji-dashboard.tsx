@@ -84,6 +84,8 @@ async function main() {
   cek("kotak peta menampilkan jumlah butir", kotakTerisi.length >= 4, String(kotakTerisi.length));
   cek("baris tak terbaca dilaporkan", /belum bisa dipetakan/.test(teks()), teks().slice(-300));
   cek("tim yang dikenal tetap n/a", /n\/a/.test(teks()), "");
+  cek("rincian pembacaan sheet tersedia", /Rincian pembacaan sheet/.test(teks()), "");
+  cek("rincian menyebut baris humas", /baris \d+ · Humas Datin · 2 November 2026/i.test(teks()), teks().slice(-400));
 
   const lulus = hasil.filter((h) => h.lulus).length;
   hasil.filter((h) => !h.lulus).forEach((h) => console.log("  GAGAL:", h.nama, "→", h.info));
