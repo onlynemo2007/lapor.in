@@ -149,6 +149,8 @@ async function main() {
   cek("rentang baris ditampilkan", /baris\s*9–10/.test(teksSumber), teksSumber.slice(0, 400));
   cek("judul tabel tersimpan", c().week!.anggaranJudul === "Realisasi Anggaran", String(c().week!.anggaranJudul));
 
+  cek("judul kartu 'Realisasi anggaran'", /Realisasi anggaran/.test(document.body.textContent ?? ""), "");
+
   const lulus = hasil.filter((h) => h.lulus).length;
   hasil.filter((h) => !h.lulus).forEach((h) => console.log("  GAGAL:", h.nama, "→", h.info));
   console.log(`\n${lulus}/${hasil.length} uji Keuangan (UI) lulus`);

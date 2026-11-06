@@ -85,19 +85,22 @@ export function parseTabelKeuangan(rows: string[][], kecuali?: Set<number>): Tab
   const isi = (r: string[]) => (r ?? []).map((x) => (x ?? "").trim());
   const nonKosong = (r: string[]) => isi(r).map((t, j) => (t ? j : -1)).filter((j) => j >= 0);
 
+  const labelKolom = (t: string) => t.length <= 24 && t.split(/\s+/).length <= 4;
   const headerDari = (r: string[]): number[] | null => {
     const sel = isi(r);
     const idx = nonKosong(sel);
     if (idx.length < 2) return null;
     const judul = idx.map((j) => sel[j]);
     if (judul.every((t) => angkaSel(t))) return null;
-    // baris data hampir selalu memuat angka atau teks panjang — jangan dianggap judul kolom
+    // baris data hampir selalu memuat angka atau kalimat panjang — jangan dianggap judul kolom
     if (idx.some((j) => angkaSel(sel[j]))) return null;
-    if (judul.some((t) => t.length > 40)) return null;
+    // judul kolom itu pendek ("Pagu", "Pembayaran Melalui LS"); baris data bisa panjang
+    // ("PEMBAYARAN PUMK DUKMAN MELALUI TUNAI") dan tidak boleh memecah tabel
+    if (judul.some((t) => !labelKolom(t))) return null;
     const adaKeuangan = judul.filter((t) => KATA_KEUANGAN.test(t)).length > 0;
-    const adaUraian = judul.some((t) => /uraian|kegiatan/i.test(t));
+    const adaUraian = judul.some((t) => /uraian|kegiatan|keterangan/i.test(t));
     if (!adaKeuangan) return null;
-    if (!adaUraian && judul.length < 2) return null;
+    if (!adaUraian && judul.length < 3) return null;
     return idx;
   };
 
@@ -137,9 +140,10 @@ export function parseTabelKeuangan(rows: string[][], kecuali?: Set<number>): Tab
       const isiBaris = isi(rows[j]);
       if (!nonKosong(isiBaris).length) break;
       if (headerDari(rows[j])) break;
-      const berikut = rows[j + 1] ? isi(rows[j + 1]) : [];
-      if (tampakJudul(rows[j]) && (!nonKosong(berikut).length || headerDari(rows[j + 1]))) break;
       const idxTerisi = nonKosong(isiBaris).filter((k) => kolomIdx.includes(k));
+      // baris "Jumlah"/"Total" penutup tabel tetap dibaca walau barisnya hanya berisi satu sel
+      const total = idxTerisi.length > 0 && /^(jumlah|total|sub ?total|grand ?total)\b/i.test(isiBaris[idxTerisi[0]] ?? "");
+      if (!total && tampakJudul(rows[j]) && (!nonKosong(rows[j + 1] ?? []).length || headerDari(rows[j + 1] ?? []))) break;
       if (!idxTerisi.length) {
         if (tampakJudul(rows[j])) break;
         continue;

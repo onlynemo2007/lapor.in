@@ -154,7 +154,7 @@ export default function KeuanganView() {
 
       <Card className="p-4 sm:p-5">
         <SectionTitle
-          title="Rincian kegiatan"
+          title="Realisasi anggaran"
           sub={baris.length ? `${baris.length} kode · ketik nilai lalu Simpan` : "Tabel bagian D belum terbaca"}
           right={
             <div className="flex items-center gap-2">

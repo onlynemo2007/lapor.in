@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { csv, grid } from "./fixture-besar.mjs";
-import { parseWeek } from "/tmp/sheet.mjs";
+import { parseWeek, parseTabelKeuangan } from "/tmp/sheet.mjs";
 import { lingkunganDari, GID } from "./fixture-lamp.mjs";
 
 const kode = readFileSync("/tmp/kode.js", "utf8");
@@ -36,6 +36,30 @@ cek("tabel sumber tidak diduplikasi", !judulTabel.includes("Realisasi Anggaran")
 const sisa = w.tabelKeuangan.find((t) => t.judul === "Sisa Di Rekening");
 cek("kolom tabel sesuai sheet", sisa?.kolom.map((k) => k.label).join("|") === "No|Kode|Uraian|Pagu|Realisasi", JSON.stringify(sisa?.kolom));
 cek("baris tabel sesuai sheet", sisa?.baris.length === 1 && sisa.baris[0].sel[3] === "1500000000", JSON.stringify(sisa?.baris));
+
+/* --- baris panjang ber-kata kunci tidak boleh memecah tabel jadi dua --- */
+{
+  const baris = [
+    ["Rekapitulasi UP"],
+    ["No", "Uraian", "Pagu", "Pengeluaran", "Sisa"],
+    ["1", "UP Kartu Kredit Pemerintah", "", "", "80000000"],
+    ["2", "UP Tunai", "", "0,00", "120000000"],
+    ["a", "Sisa Di Rekening", "95865159", "0,00", ""],
+    ["b", "Tunai", "24134841", "0,00", ""],
+    ["B2", "PEMBAYARAN PUMK DUKMAN MELALUI TUNAI", "", "", ""],
+    ["b3", "Pembayaran PUMK Teknis Melalui Tunai", "", "", ""],
+    ["Jumlah", "", "", "", ""],
+    [],
+    ["Pembayaran Melalui LS"],
+    ["No", "Uraian", "Nilai", "Keterangan"],
+    ["1", "Honor narasumber", "15000000", "Lunas"],
+  ];
+  const t = parseTabelKeuangan(baris);
+  cek("tabel tidak terpecah dua", t.length === 2, JSON.stringify(t.map((x) => [x.judul, x.baris.length])));
+  cek("baris panjang tetap di tabel UP", t[0].baris.length === 7, JSON.stringify(t[0]?.baris.map((b) => b.label)));
+  cek("baris panjang tidak jadi judul kolom", t[0].kolom.length === 5, JSON.stringify(t[0]?.kolom.map((k) => k.label)));
+  cek("tabel berikutnya tetap terpisah", t[1].judul === "Pembayaran Melalui LS" && t[1].baris.length === 1, JSON.stringify(t[1]?.judul));
+}
 
 /* --- skrip menulis ke baris yang dikirim aplikasi (bukan tabel lain) --- */
 {
