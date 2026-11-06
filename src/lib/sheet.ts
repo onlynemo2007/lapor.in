@@ -252,6 +252,8 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
   const kodeTabel: KodeTabel[] = [];
   let keuHeader: KodeTabel | null = null;
   const firstRow: Record<string, number> = {};
+  // tanggal terakhir yang terbaca di bagian A — dipakai bila sel tanggal dikosongkan (merge)
+  let tglTerakhir = "";
   const lampRaw: Record<string, string[]> = {};
   const cList: { tgl: string; row: number; r: string[] }[] = [];
   const pList: { tgl: string; row: number; r: string[] }[] = [];
@@ -349,15 +351,29 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
 
     /* ---- baris data ---- */
     if (sec === "A") {
-      const T = cell(c.tim), G = cell(c.tgl);
+      const T = cell(c.tim), G = cell(c.tgl), U = cell(c.ur);
       if (T && norm(T) !== "tim") {
-        tim = timIdDari(T);
-        sub = "";
+        const id = timIdDari(T);
+        if (id) {
+          tim = id;
+          sub = "";
+        }
       }
       if (!tim) return;
-      if (/^(program|monev)$/i.test(G)) {
-        sub = G[0].toUpperCase() + G.slice(1).toLowerCase();
+
+      // baris judul sub-tim ("Program" / "Monev") — boleh di kolom tanggal atau kolom uraian
+      const subDari = (x: string) => {
+        const t = x.trim().toLowerCase();
+        return t === "program" ? "Program" : t === "monev" ? "Monev" : "";
+      };
+      const subKolom = subDari(G) || (!isTanggal(G) && !G.trim() ? subDari(U) : "");
+      if (subKolom) {
+        sub = subKolom;
+        return;
       }
+      // sub pertama untuk tim Program/Monev bila sheet tidak menulis judul sub-nya
+      if (tim === "program" && !sub) sub = "Program";
+
       // tautan lampiran: kolom setelah uraian yang berisi URL
       for (let j = c.ur + 1; j < r.length; j++) {
         if (isLink(r[j])) {
@@ -370,17 +386,19 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
           break;
         }
       }
-      if (tim === "program" && !sub && isTanggal(G)) sub = "Program";
-      if (isTanggal(G)) {
-        const tgl = cleanDate(G);
-        if (!w.dates.some((x) => norm(x) === norm(tgl))) w.dates.push(tgl);
-        const k = slotKey(tim, sub, tgl);
-        w.rows.A[k] = sheetRow;
-        const items = splitUraian(r[c.ur] ?? "");
-        if (items.length) w.kegiatan[k] = items;
-        const lk = lampKey(tim, sub);
-        if (!(lk in firstRow)) firstRow[lk] = sheetRow;
-      }
+
+      // Tanggal boleh kosong bila selnya digabung (merge) — pakai tanggal terakhir di atasnya,
+      // asalkan baris ini memang berisi uraian kegiatan.
+      const tgl = isTanggal(G) ? cleanDate(G) : !G.trim() && U.trim() ? tglTerakhir : "";
+      if (!tgl) return;
+      tglTerakhir = tgl;
+      if (!w.dates.some((x) => norm(x) === norm(tgl))) w.dates.push(tgl);
+      const k = slotKey(tim, sub, tgl);
+      w.rows.A[k] = sheetRow;
+      const items = splitUraian(U);
+      if (items.length) w.kegiatan[k] = items;
+      const lk = lampKey(tim, sub);
+      if (!(lk in firstRow)) firstRow[lk] = sheetRow;
     } else if (sec === "B") {
       const T = cell(c.bTim);
       if (T && norm(T) !== "tim") {

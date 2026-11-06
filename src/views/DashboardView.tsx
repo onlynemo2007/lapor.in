@@ -2,11 +2,17 @@ import { useEffect, useMemo } from "react";
 import { useApp } from "../lib/store";
 import { SLOT_ROWS, TIMS, TOTAL_PEGAWAI, hariDari, norm, rupiahPendek, ringkas, slotAda, slotKey, slotLabel, tanggalPendek } from "../lib/model";
 import { go } from "../components/Shell";
+import { jamSinkron } from "../lib/sync";
 import { Btn, Card, I, Pill, Progress, SectionTitle, Spinner, cx } from "../components/ui";
 import { StateGate } from "./common";
 
 export default function DashboardView() {
-  const { week, settings, setSettings, trend, loadTrend, trendLoading, tabs, pendingCount, syncState } = useApp();
+  const { week, settings, setSettings, trend, loadTrend, trendLoading, tabs, pendingCount, syncState, reload, dibacaAt } = useApp();
+
+  // Peta isian harus memakai isi sheet terbaru: baca ulang diam-diam saat dashboard dibuka.
+  useEffect(() => {
+    if (!dibacaAt || Date.now() - dibacaAt > 8000) void reload(undefined, true);
+  }, [reload, dibacaAt]);
 
   useEffect(() => {
     const have = tabs.slice(0, 6).filter((t) => trend[t.gid]).length;
@@ -70,7 +76,11 @@ export default function DashboardView() {
             )}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-[11.5px] text-muted">{dibacaAt ? `Data sheet dibaca ${jamSinkron(dibacaAt)}` : "Membaca sheet…"}</p>
+          <Btn variant="ghost" size="sm" onClick={() => void reload(undefined, true)} title="Ambil isi terbaru dari Google Sheet">
+            <I.refresh className="h-4 w-4" /> Ambil data terbaru
+          </Btn>
           <Btn variant="ghost" onClick={() => go("isi", { mode: "chat" })}>
             <I.chat className="h-4 w-4" />
             Isi lewat chat

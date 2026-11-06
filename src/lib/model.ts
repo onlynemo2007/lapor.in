@@ -237,8 +237,8 @@ const BULAN = [
 ];
 const HARI = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
-export const isTanggal = (s: string) =>
-  new RegExp(`^\\d{1,2}\\s+(${BULAN.join("|")})\\s+\\d{4}$`, "i").test(s.replace(/\s+/g, " ").trim());
+/** Tanggal dalam penulisan apa pun yang didukung parseTanggal (2 November 2026, 2 Nov 2026, 02/11/2026). */
+export const isTanggal = (s: string) => !!parseTanggal(s);
 
 /** Indeks bulan dari nama penuh atau singkatannya ("November", "Nov", "Nop"). */
 const bulanDari = (t: string): number => {
