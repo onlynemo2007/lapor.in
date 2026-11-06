@@ -161,9 +161,15 @@ export function parseTabelKeuangan(rows: string[][], kecuali?: Set<number>): Tab
     const kolom = kolomIdx.map((j) => ({ index: j, label: sel[j] || `Kolom ${j + 1}` }));
 
     const baris: BarisKeuangan[] = [];
+    // baris kosong di tengah tabel (mis. baris baru yang disisipkan dari aplikasi) ditahan dulu;
+    // hanya dipakai bila tabelnya memang berlanjut sesudahnya, jadi baris kosong penutup tetap dibuang
+    const kosong: number[] = [];
     for (let j = i + 1; j < rows.length; j++) {
       const isiBaris = isi(rows[j]);
-      if (!nonKosong(isiBaris).length) break;
+      if (!nonKosong(isiBaris).length) {
+        kosong.push(j + 1);
+        continue;
+      }
       if (headerDari(rows[j])) break;
       const idxTerisi = nonKosong(isiBaris).filter((k) => kolomIdx.includes(k));
       // baris "Jumlah"/"Total" penutup tabel tetap dibaca walau barisnya hanya berisi satu sel
@@ -173,6 +179,8 @@ export function parseTabelKeuangan(rows: string[][], kecuali?: Set<number>): Tab
         if (tampakJudul(rows[j])) break;
         continue;
       }
+      // tabel berlanjut → baris kosong di atasnya ikut ditampilkan (bisa langsung diisi)
+      kosong.splice(0).forEach((nomor) => baris.push({ nomor, label: "", labelKolom: kolomIdx[0], sel: {} }));
       const labelKolom = idxTerisi[0];
       const selBaris: Record<number, string> = {};
       idxTerisi.forEach((k) => (selBaris[k] = isiBaris[k]));
@@ -720,7 +728,59 @@ export type Payload = {
   keuangan: { kode: string; uraian: string; pagu: number; realisasi: number; baris?: number }[];
   /** bagian D — sel tabel keuangan lain (Rekapitulasi UP, LS, Rencana Penarikan, …) */
   sel: { baris: number; kolom: number; nilai: string; label?: string; labelKolom?: number }[];
+  /** bagian D — baris baru yang disisipkan ke tabel keuangan (Rekapitulasi UP, Pembayaran LS, …) */
+  sisip?: SisipBaris[];
 };
+
+/** Satu baris baru untuk tabel keuangan. */
+export type SisipBaris = {
+  /** judul tabel (hanya untuk pesan galat) */
+  judul?: string;
+  /** baris sheet tempat baris baru disisipkan (1-based) — baris “Jumlah” bila ada */
+  baris: number;
+  /** baris acuan: labelnya harus masih sama supaya baris tidak disisip di tempat yang salah */
+  acuan?: number;
+  label?: string;
+  labelKolom?: number;
+  /** indeks kolom (0-based) yang ditulis ke baris baru */
+  kolom: number[];
+  /** nilai per kolom, urutannya sama dengan `kolom` */
+  nilai: string[];
+};
+
+/**
+ * Titik sisip untuk sebuah tabel: tepat sebelum baris “Jumlah/Total” (supaya rumus penutup tetap
+ * di bawah), atau setelah baris terakhir bila tabelnya tidak punya baris jumlah.
+ */
+export function acuanSisip(t: TabelKeuangan): Pick<SisipBaris, "baris" | "acuan" | "label" | "labelKolom" | "kolom"> {
+  const total = t.baris.find((r) => /^(jumlah|sub ?total|grand ?total|total)\b/i.test(r.label));
+  const akhir = t.baris[t.baris.length - 1];
+  const jangkar = total ?? akhir;
+  return {
+    baris: jangkar ? jangkar.nomor + (total ? 0 : 1) : t.header + 1,
+    acuan: jangkar?.nomor,
+    label: jangkar?.label,
+    labelKolom: jangkar?.labelKolom,
+    kolom: t.kolom.map((k) => k.index),
+  };
+}
+
+/** Paket kiriman khusus menyisipkan baris baru (isian lain tidak ikut dikirim). */
+export function payloadSisip(w: WeekData, token: string, oleh: string, entri: SisipBaris[]): Payload {
+  return {
+    token,
+    gid: w.gid,
+    oleh,
+    kegiatan: [],
+    lampiran: [],
+    rencana: [],
+    presensi: [],
+    aplikasi: [],
+    keuangan: [],
+    sel: [],
+    sisip: entri,
+  };
+}
 
 export function buildPayload(w: WeekData, token: string, oleh: string, hanyaBerubah: boolean): Payload {
   const inc = (k: string) => !hanyaBerubah || !!w.dirty[k];
@@ -863,7 +923,7 @@ export async function kirimKeScript(url: string, payload: Payload, batasMs = 250
 }
 
 /** Versi kode Apps Script yang disalin dari aplikasi (harus sama dengan `VERSI` di skrip). */
-export const SCRIPT_VERSI = "1.9";
+export const SCRIPT_VERSI = "2.0";
 
 export type BuatTabResult = {
   ok: boolean;
@@ -962,6 +1022,9 @@ export const APPS_SCRIPT = `/**
  * Rencana Penarikan, …) ke baris & kolom yang sama, dengan pemeriksaan label baris.
  * v1.9 pagu/realisasi ditulis ke baris yang dikirim aplikasi (setelah kodenya dicek),
  * jadi tetap benar walau bagian D memuat beberapa tabel ber-kolom Kode/Pagu.
+ * v2.0 bisa MENYISIPKAN baris baru di tabel keuangan (Rekapitulasi UP, Pembayaran
+ * Melalui LS, …) tepat sebelum baris Jumlah: rumus baris di atasnya diwarisi dan
+ * rentang rumus Jumlah diperluas supaya baris baru ikut terhitung.
  */
 const TOKEN = 'GANTI-DENGAN-KODE-RAHASIA'; // samakan dengan isian di aplikasi
 const VERSI = '${SCRIPT_VERSI}';
@@ -977,6 +1040,54 @@ function doGet(e) {
     ok: true, versi: VERSI, nama: ss.getName(),
     tabs: ss.getSheets().filter(function (s) { return !s.isSheetHidden(); })
       .map(function (s) { return { name: s.getName(), gid: String(s.getSheetId()) }; })
+  });
+}
+
+/**
+ * Sisipkan satu baris baru sebelum baris “Jumlah” pada sebuah tabel keuangan.
+ * Rumus baris di atasnya (mis. SISA = PAGU - PENGELUARAN) ikut disalin, lalu rentang
+ * rumus baris Jumlah diperluas agar baris baru terhitung. Nilai sel lain tidak disentuh.
+ */
+function sisipBaris(sh, x) {
+  const baris = Number(x.baris || 0);
+  const kolom = (x.kolom || []).map(Number);
+  if (!baris || !kolom.length) throw new Error('baris/kolom tidak lengkap');
+  // pengaman: pastikan baris acuan masih baris yang sama (label tidak bergeser)
+  if (x.label && x.acuan) {
+    const sekarang = String(sh.getRange(Number(x.acuan), Number(x.labelKolom || 0) + 1).getDisplayValue() || '').trim();
+    if (rapi(sekarang) !== rapi(x.label)) throw new Error('baris acuan bergeser');
+  }
+  sh.insertRowBefore(baris);
+  if (baris > 1) {
+    const lebar = Math.max(sh.getLastColumn(), kolom[kolom.length - 1] + 1);
+    const rumus = sh.getRange(baris - 1, 1, 1, lebar).getFormulas()[0] || [];
+    // hanya SEL BERISI RUMUS yang disalin (mis. SISA = PAGU - PENGELUARAN); nilainya tidak,
+    // supaya baris baru tidak menduplikasi isi baris di atasnya. Referensi relatif ikut menyesuaikan.
+    rumus.forEach(function (f, j) {
+      if (f) sh.getRange(baris - 1, j + 1).copyTo(sh.getRange(baris, j + 1));
+    });
+  }
+  let n = 1;
+  const nilai = x.nilai || [];
+  if (nilai.length) n += tulisBaris(sh, baris, kolom, nilai);
+  perpanjangJumlah(sh, baris);
+  return n;
+}
+
+/** Perluas rumus baris di bawah baris baru (=SUM(C89:C96)) supaya baris baru ikut terhitung. */
+function perpanjangJumlah(sh, barisBaru) {
+  const lebar = sh.getLastColumn();
+  if (!lebar) return;
+  const rumus = sh.getRange(barisBaru + 1, 1, 1, lebar).getFormulas()[0] || [];
+  const pola = /^(=[A-Z]+\\([^()]*?)([A-Z]{1,3})(\\d+):([A-Z]{1,3})(\\d+)([^()]*\\))$/i;
+  rumus.forEach(function (f, j) {
+    // hanya rumus satu rentang yang berakhir tepat di baris sebelum baris baru
+    if (!f || f.indexOf(':') < 0) return;
+    const m = f.match(pola);
+    if (!m) return;
+    if (Number(m[5]) !== barisBaru - 1 || Number(m[3]) > Number(m[5])) return;
+    // tulis per sel — sel lain di baris Jumlah (mis. teks "Jumlah") tidak boleh tersentuh
+    sh.getRange(barisBaru + 1, j + 1).setFormula(m[1] + m[2] + m[3] + ':' + m[4] + barisBaru + m[6]);
   });
 }
 
@@ -1028,6 +1139,11 @@ function doPost(e) {
     });
     (d.presensi || []).forEach(function (x) { tulis(m.C[x.tanggal] || m.Cidx[x.idx], [k.cHadir, k.cTk, k.cDl, k.cCuti], x.nilai, 'presensi ' + x.tanggal); });
     (d.aplikasi || []).forEach(function (x) { tulis(m.P[x.tanggal] || m.Pidx[x.idx], [k.pSikepo, k.pEp, k.pFp, k.pTidak, k.pCutiDl], x.nilai, 'aplikasi ' + x.tanggal); });
+    // baris baru PALING AKHIR: menyisip baris menggeser nomor baris di bawahnya
+    (d.sisip || []).forEach(function (x) {
+      const label = 'sisip ' + (x.judul || '') + ' baris ' + x.baris;
+      try { n += sisipBaris(sh, x); } catch (err) { gagal.push(label + ': ' + String(err && err.message ? err.message : err)); }
+    });
 
     if (n) catat(sh, d.oleh, n, gagal.length);
     return keluar({ ok: true, versi: VERSI, ditulis: n, gagal: gagal });

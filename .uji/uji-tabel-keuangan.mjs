@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { lingkunganDari, GID } from "./fixture-lamp.mjs";
 import { grid, csv } from "./fixture-keuangan.mjs";
-import { parseWeek, buildPayload, mergeWeek } from "/tmp/sheet.mjs";
+import { parseWeek, buildPayload, mergeWeek, acuanSisip, payloadSisip } from "/tmp/sheet.mjs";
 import { setSelKeuangan } from "/tmp/store.mjs";
 
 const kode = readFileSync("/tmp/kode.js", "utf8");
@@ -89,6 +89,61 @@ const post = (a, isi) => JSON.parse(a.doPost({ postData: { contents: JSON.string
   /* tanpa label tetap boleh (kiriman lama) */
   const r3 = post(a, { token: a.TOKEN, gid: GID, sel: [{ baris: 5, kolom: 4, nilai: "70000000" }] });
   cek("tanpa label tetap ditulis", r3.gagal.length === 0 && env.sumber.get(5, 5) === 70000000, JSON.stringify(r3));
+}
+
+
+/* ---------- titik sisip baris baru (tambah baris tabel keuangan) ---------- */
+{
+  const teks = [
+    "LAPORAN MINGGU I BULAN NOVEMBER 2026,,,,,,",
+    ",,D,REALISASI KEUANGAN,,,,",
+    "Rekapitulasi UP,,,,,,",
+    "No,Uraian,Pagu,Realisasi,Sisa,,",
+    "1,UP Januari,100000000,20000000,80000000,,",
+    "2,UP Februari,50000000,10000000,40000000,,",
+    "Jumlah,,150000000,30000000,120000000,,",
+    ",,,,,,,",
+    "Pembayaran Melalui LS,,,,,,",
+    "No,Uraian,Nilai,Keterangan,,,",
+    "1,Honor narasumber,15000000,Lunas,,,",
+  ].join("\n");
+  const w = parseWeek(teks, "1", "Nov I");
+  const up = w.tabelKeuangan.find((t) => /Rekapitulasi UP/i.test(t.judul));
+  const ls = w.tabelKeuangan.find((t) => /Pembayaran Melalui LS/i.test(t.judul));
+  cek("tabel UP & LS terbaca", !!up && !!ls, JSON.stringify(w.tabelKeuangan.map((t) => t.judul)));
+  const aUp = up ? acuanSisip(up) : null;
+  cek("baris baru UP disisip sebelum baris Jumlah", !!aUp && aUp.baris === 7 && aUp.acuan === 7, JSON.stringify(aUp));
+  cek("acuan UP membawa label 'Jumlah'", !!aUp && /jumlah/i.test(aUp.label ?? "") && aUp.labelKolom === 0, JSON.stringify(aUp));
+  cek("kolom sisip mengikuti kolom tabel", !!aUp && aUp.kolom.join(",") === "0,1,2,3,4", JSON.stringify(aUp?.kolom));
+  const aLs = ls ? acuanSisip(ls) : null;
+  cek("tabel tanpa Jumlah: sisip setelah baris terakhir", !!aLs && aLs.baris === 12 && aLs.acuan === 11, JSON.stringify(aLs));
+  const p = payloadSisip(w, "tok", "Uji", [{ judul: up?.judul, ...aUp, nilai: [] }]);
+  cek("payload sisip hanya memuat sisip", p.sisip?.length === 1 && !p.kegiatan.length && !p.sel.length, JSON.stringify(p).slice(0, 160));
+}
+
+
+/* ---------- baris kosong di tengah tabel ikut ditampilkan ---------- */
+{
+  const teks = [
+    "LAPORAN MINGGU I BULAN NOVEMBER 2026,,,,,,",
+    ",,D,REALISASI KEUANGAN,,,,",
+    "Rekapitulasi UP,,,,,,",
+    "No,Uraian,Pagu,Realisasi,Sisa,,",
+    "1,UP Januari,100000000,20000000,80000000,,",
+    ",,,,,,,",
+    "Jumlah,,100000000,20000000,80000000,,",
+    ",,,,,,,",
+    "Pembayaran Melalui LS,,,,,,",
+    "No,Uraian,Nilai,Keterangan,,,",
+    "1,Honor narasumber,15000000,Lunas,,,",
+  ].join("\n");
+  const w = parseWeek(teks, "1", "Nov I");
+  const up = w.tabelKeuangan.find((t) => /Rekapitulasi UP/i.test(t.judul));
+  const ls = w.tabelKeuangan.find((t) => /Pembayaran Melalui LS/i.test(t.judul));
+  cek("baris kosong sebelum Jumlah ikut dibaca", !!up && up.baris.map((r) => r.nomor).join(",") === "5,6,7", JSON.stringify(up?.baris.map((r) => r.nomor)));
+  cek("baris kosong tanpa label (bisa diisi)", !!up && up.baris[1].label === "" && Object.keys(up.baris[1].sel).length === 0, JSON.stringify(up?.baris[1]));
+  cek("baris kosong penutup tabel tidak ikut", !!ls && ls.baris.length === 1, JSON.stringify(ls?.baris.map((r) => r.nomor)));
+  cek("sisip pada tabel ber-Jumlah tetap sebelum Jumlah", !!up && acuanSisip(up).baris === 7, JSON.stringify(up && acuanSisip(up)));
 }
 
 const lulus = hasil.filter((h) => h.lulus).length;

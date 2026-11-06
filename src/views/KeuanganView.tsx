@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { setKeuangan, setSelKeuangan, useApp } from "../lib/store";
-import { parseAngka, rupiah, rupiahPendek, selKey, serapan, totalAnggaran } from "../lib/model";
-import { Btn, Card, I, Pill, SectionTitle, cx, useToast } from "../components/ui";
+import { parseAngka, rupiah, rupiahPendek, selKey, serapan, totalAnggaran, type TabelKeuangan } from "../lib/model";
+import { SCRIPT_VERSI, acuanSisip, fetchWeek, kirimKeScript, payloadSisip } from "../lib/sheet";
+import { Btn, Card, I, Pill, SectionTitle, Spinner, cx, useToast } from "../components/ui";
 import { StateGate } from "./common";
 import { jamSinkron } from "../lib/sync";
 
@@ -16,6 +17,7 @@ export default function KeuanganView() {
   const [draft, setDraft] = useState<Record<string, Draft>>({});
   const [selDraft, setSelDraft] = useState<Record<string, string>>({});
   const [cari, setCari] = useState("");
+  const [sisipSibuk, setSisipSibuk] = useState("");
   const awal = useRef<Record<string, Draft>>({});
 
   // Muat isian dari sheet. Pembacaan ulang otomatis tidak boleh menimpa ketikan yang belum disimpan.
@@ -88,6 +90,45 @@ export default function KeuanganView() {
     toast(
       `Realisasi keuangan tersimpan · ${berubah.length + selBerubah.length} isian${settings.scriptUrl && settings.token && settings.autoSync ? " · langsung ke Sheet" : ""}`,
     );
+  };
+
+  /** Sisipkan satu baris baru ke tabel keuangan di sheet (sebelum baris Jumlah), lalu baca ulang. */
+  const tambahBaris = async (t: TabelKeuangan) => {
+    if (!settings.scriptUrl || !settings.token) {
+      toast("Hubungkan Apps Script dulu (menu Sinkronisasi) agar baris bisa ditambahkan ke sheet.", "err");
+      return;
+    }
+    const acuan = acuanSisip(t);
+    if (!acuan.acuan) {
+      toast("Tabel ini belum punya baris acuan di sheet.", "err");
+      return;
+    }
+    setSisipSibuk(`${t.judul}|${t.header}`);
+    try {
+      const p = payloadSisip(week, settings.token, settings.nama, [
+        { judul: t.judul, ...acuan, nilai: [] },
+      ]);
+      const r = await kirimKeScript(settings.scriptUrl, p);
+      if (!r.ok) throw new Error(r.error ?? "Skrip menolak permintaan.");
+      if (r.gagal?.length) throw new Error(r.gagal[0]);
+      if (r.verified && !r.ditulis) {
+        throw new Error(
+          `Skrip di spreadsheet belum mendukung tambah baris. Salin ulang kode v${SCRIPT_VERSI} dari menu Sinkronisasi → Apps Script, lalu Deploy versi baru.`,
+        );
+      }
+      if (!r.verified) {
+        // balasan skrip tidak terbaca browser: pastikan barisnya benar-benar bertambah
+        const sesudah = await fetchWeek(week.gid, week.tab);
+        const sama = sesudah.tabelKeuangan.find((x: TabelKeuangan) => x.judul === t.judul);
+        if (!sama || sama.baris.length <= t.baris.length) throw new Error("Skrip menerima permintaan, tetapi baris di sheet belum bertambah.");
+      }
+      await reload(undefined, true);
+      toast(`Satu baris ditambahkan di "${t.judul}" · tersimpan di sheet`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Gagal menambah baris.", "err");
+    } finally {
+      setSisipSibuk("");
+    }
   };
 
   const tampil = baris.filter((a) => {
@@ -265,7 +306,21 @@ export default function KeuanganView() {
           <SectionTitle
             title={t.judul}
             sub={`${t.baris.length} baris · kolom mengikuti sheet (baris ${t.header})`}
-            right={<Pill>{t.kolom.length} kolom</Pill>}
+            right={
+              <div className="flex items-center gap-2">
+                <Pill>{t.kolom.length} kolom</Pill>
+                <Btn
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void tambahBaris(t)}
+                  disabled={!!sisipSibuk}
+                  title="Sisipkan satu baris baru sebelum baris Jumlah dan simpan ke sheet"
+                >
+                  {sisipSibuk === `${t.judul}|${t.header}` ? <Spinner className="h-4 w-4" /> : <I.plus className="h-4 w-4" />}
+                  Tambah baris
+                </Btn>
+              </div>
+            }
           />
           <div className="overflow-x-auto">
             <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
@@ -284,7 +339,8 @@ export default function KeuanganView() {
                     {t.kolom.map((k) => {
                       const kunci = selKey(r.nomor, k.index);
                       const kotor = selDraft[kunci] !== undefined && selDraft[kunci] !== (week.selKeuangan?.[kunci] ?? nilaiSheet[kunci] ?? "");
-                      if (k.index === r.labelKolom)
+                      // kolom penanda hanya bisa dibaca — kecuali pada baris yang masih kosong (baris baru)
+                      if (k.index === r.labelKolom && r.label)
                         return (
                           <td key={k.index} className="py-2 pr-2 font-semibold">
                             {r.sel[k.index] ?? r.label}
@@ -316,7 +372,9 @@ export default function KeuanganView() {
         <p className="text-[11.5px] leading-relaxed text-muted">
           Sel yang diubah ditulis ke baris &amp; kolom yang sama dengan pengaman: bila barisnya bergeser di sheet,
           aplikasi menolak menulis dan menandainya gagal (tidak menimpa baris lain). Kolom penanda baris sengaja
-          tidak bisa diubah dari sini.
+          tidak bisa diubah dari sini. Tombol <b>Tambah baris</b> menyisipkan satu baris baru tepat sebelum baris
+          Jumlah (rumus di atasnya ikut disalin, rentang Jumlah diperluas) lalu langsung menulisnya ke sheet —
+          perlu Apps Script v{SCRIPT_VERSI}.
         </p>
       )}
     </div>

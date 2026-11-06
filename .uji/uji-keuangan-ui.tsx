@@ -32,9 +32,13 @@ const CSV = [
 ].join("\n");
 
 let aktif: ReturnType<typeof useApp> | null = null;
+const terkirim: any[] = [];
 const fetchAsli = globalThis.fetch;
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-  if (init?.method === "POST") return { ok: true, text: async () => JSON.stringify({ ok: true, versi: "1.7", ditulis: 1, gagal: [] }) } as unknown as Response;
+  if (init?.method === "POST") {
+    try { terkirim.push(JSON.parse(String(init.body))); } catch { /* abaikan */ }
+    return { ok: true, text: async () => JSON.stringify({ ok: true, versi: "2.0", ditulis: 1, gagal: [] }) } as unknown as Response;
+  }
   const url = String(input);
   if (url.includes("aksi=ping")) return { ok: true, json: async () => ({ ok: false }), text: async () => "" } as unknown as Response;
   return { ok: true, text: async () => CSV, json: async () => ({}) } as unknown as Response;
@@ -150,6 +154,25 @@ async function main() {
   cek("judul tabel tersimpan", c().week!.anggaranJudul === "Realisasi Anggaran", String(c().week!.anggaranJudul));
 
   cek("judul kartu 'Realisasi anggaran'", /Realisasi anggaran/.test(document.body.textContent ?? ""), "");
+
+  /* ---- tambah baris pada tabel keuangan (Rekapitulasi UP / Pembayaran LS) ---- */
+  await act(async () => {
+    c().setSettings({ scriptUrl: "https://script.google.com/macros/s/uji/exec", token: "tok", autoSync: false });
+  });
+  const tombolTambah = Array.from(document.querySelectorAll("button")).filter((b) => (b.textContent ?? "").includes("Tambah baris")) as HTMLButtonElement[];
+  cek("tiap tabel punya tombol tambah baris", tombolTambah.length === c().week!.tabelKeuangan.length, `${tombolTambah.length} tombol / ${c().week!.tabelKeuangan.length} tabel`);
+  const up = c().week!.tabelKeuangan.find((t) => t.judul === "Rekapitulasi UP")!;
+  const urutUp = c().week!.tabelKeuangan.indexOf(up);
+  await act(async () => {
+    tombolTambah[urutUp].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 120));
+  });
+  const sisip = terkirim.map((x) => x.sisip?.[0]).filter(Boolean).pop();
+  cek("kiriman sisip terkirim", !!sisip, JSON.stringify(terkirim.map((x) => Object.keys(x))));
+  cek("sisip memakai baris setelah baris terakhir", !!sisip && sisip.baris === 16 && sisip.acuan === 15, JSON.stringify(sisip));
+  cek("sisip membawa acuan label baris", !!sisip && sisip.label === "2" && sisip.labelKolom === 0, JSON.stringify(sisip));
+  cek("sisip memuat semua kolom tabel", !!sisip && sisip.kolom.length === 5 && sisip.kolom[0] === 0, JSON.stringify(sisip?.kolom));
+  cek("tanda berhasil tampil", /ditambahkan di/.test(document.body.textContent ?? ""), (document.body.textContent ?? "").slice(-160));
 
   const lulus = hasil.filter((h) => h.lulus).length;
   hasil.filter((h) => !h.lulus).forEach((h) => console.log("  GAGAL:", h.nama, "→", h.info));

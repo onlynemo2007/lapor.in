@@ -61,6 +61,19 @@ class R {
   getValues() { const o = []; for (let i = 0; i < this.nr; i++) { const row = []; for (let j = 0; j < this.nc; j++) row.push(this.sh.get(this.r + i, this.c + j)); o.push(row); } return o; }
   setValues(m) { m.forEach((row, i) => row.forEach((v, j) => this.sh.set(this.r + i, this.c + j, v))); return this; }
   getDisplayValues() { return this.getValues().map((row) => row.map(display)); }
+  /** tiruan getFormulas: nilai yang diawali "=" dianggap rumus */
+  getFormulas() { return this.getValues().map((row) => row.map((v) => (typeof v === "string" && v.startsWith("=") ? v : ""))); }
+  setFormula(f) { this.sh.set(this.r, this.c, f); return this; }
+  /** tiruan copyTo: nilai disalin; rumus disalin dengan nomor baris relatif yang menyesuaikan */
+  copyTo(dst) {
+    const v = this.getValue();
+    if (typeof v === "string" && v.startsWith("=")) {
+      const delta = dst.getRow() - this.r;
+      dst.setValue(v.replace(/([A-Z]{1,3})(\d+)/g, (_, c, r) => c + (Number(r) + delta)));
+    } else dst.setValue(v);
+    return dst;
+  }
+  setFormulas(m) { m.forEach((row, i) => row.forEach((f, j) => this.sh.set(this.r + i, this.c + j, f))); return this; }
 }
 
 export class Sheet {
@@ -92,6 +105,13 @@ export class Sheet {
     return new R(this, a, b, c ?? 1, d ?? 1);
   }
   getRangeList(list) { const sh = this; return { clearContent() { list.forEach((a1) => sh.getRange(a1).clearContent()); } }; }
+  /** tiruan insertRowBefore: menyisip baris kosong, gabungan di bawahnya ikut bergeser */
+  insertRowBefore(row) {
+    while (this.grid.length < row - 1) this.grid.push([]);
+    this.grid.splice(row - 1, 0, []);
+    this.merges = this.merges.map((m) => ({ ...m, r1: m.r1 >= row ? m.r1 + 1 : m.r1, r2: m.r2 >= row ? m.r2 + 1 : m.r2 }));
+    return this;
+  }
   copyTo(ss) { const b = new Sheet(ss, `Copy of ${this.name}`, this.grid); ss.sheets.push(b); return b; }
 }
 
