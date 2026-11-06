@@ -783,7 +783,7 @@ export async function kirimKeScript(url: string, payload: Payload, batasMs = 250
 }
 
 /** Versi kode Apps Script yang disalin dari aplikasi (harus sama dengan `VERSI` di skrip). */
-export const SCRIPT_VERSI = "1.8";
+export const SCRIPT_VERSI = "1.9";
 
 export type BuatTabResult = {
   ok: boolean;
@@ -880,6 +880,8 @@ export const APPS_SCRIPT = `/**
  * langsung ke barisnya, dicocokkan lewat kode (aman bila ada baris disisipkan).
  * v1.8 menulis sel tabel keuangan lain (Rekapitulasi UP, Pembayaran Melalui LS,
  * Rencana Penarikan, …) ke baris & kolom yang sama, dengan pemeriksaan label baris.
+ * v1.9 pagu/realisasi ditulis ke baris yang dikirim aplikasi (setelah kodenya dicek),
+ * jadi tetap benar walau bagian D memuat beberapa tabel ber-kolom Kode/Pagu.
  */
 const TOKEN = 'GANTI-DENGAN-KODE-RAHASIA'; // samakan dengan isian di aplikasi
 const VERSI = '${SCRIPT_VERSI}';
