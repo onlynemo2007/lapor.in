@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../lib/store";
 import { SPREADSHEET_ID, rentangSetelahGeser, saranNamaMinggu, slotLabel, tanggalPendek, timById } from "../lib/model";
-import { APPS_SCRIPT, SCRIPT_VERSI, blokSalin, tesScript } from "../lib/sheet";
+import { APPS_SCRIPT, SCRIPT_VERSI, blokSalin } from "../lib/sheet";
 import { jamSinkron, waktuSinkron } from "../lib/sync";
 import { Btn, Card, I, Pill, Spinner, cx, salin, useToast } from "../components/ui";
 import { StatusSinkron } from "../components/SyncBadge";
@@ -28,6 +28,8 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
     tautan,
     terapkanTautan,
     buangTautan,
+    versiSkrip,
+    periksaSkrip,
   } = useApp();
   const toast = useToast();
   const [copied, setCopied] = useState("");
@@ -42,7 +44,6 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
   const [geser, setGeser] = useState(7);
   const [busyBuat, setBusyBuat] = useState(false);
   const [hasilBuat, setHasilBuat] = useState<{ ok: boolean; text: string } | null>(null);
-  const [versiSkrip, setVersiSkrip] = useState<string>("");
   const refBuat = useRef<HTMLDivElement>(null);
   // isian koneksi memakai draf: URL & token yang sudah ada tidak pernah terhapus saat mengetik/keluar kolom
   const [urlDraf, setUrlDraf] = useState(settings.scriptUrl);
@@ -95,6 +96,7 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
       return;
     }
     setSettings(patch);
+    if (patch.scriptUrl || patch.token) void periksaSkrip();
     toast("Koneksi disimpan di perangkat ini");
     setHasil({ ok: true, text: "URL & token tersimpan di perangkat ini — tidak terhapus saat data diperbarui atau aplikasi dimuat ulang." });
   };
@@ -124,16 +126,13 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
     if (!settings.scriptUrl) return;
     setBusy("tes");
     setHasil(null);
-    try {
-      const r = await tesScript(settings.scriptUrl);
-      if (r.ok) {
-        setVersiSkrip(r.versi ?? "");
-        setHasil({ ok: true, text: `Terhubung ke “${r.nama}” (skrip v${r.versi ?? "?"}) · ${r.tabs?.length ?? 0} tab.` });
-        if (r.tabs?.length) setSettings({ extraTabs: r.tabs.filter((t) => !t.name.startsWith("_")) });
-      } else setHasil({ ok: false, text: "Skrip merespons, tetapi tidak valid." });
-    } catch {
-      setHasil({ ok: false, text: "Tidak bisa terhubung. Pastikan URL berakhiran /exec dan akses “Siapa saja”." });
-    }
+    const r = await periksaSkrip();
+    if (r.ok) {
+      setHasil({
+        ok: true,
+        text: `Terhubung ke “${r.nama}” (skrip v${r.versi ?? "?"}) · ${r.jumlahTab ?? 0} tab.${r.versi && r.versi !== SCRIPT_VERSI ? ` Skrip perlu diperbarui ke v${SCRIPT_VERSI} agar bisa membuat tab baru.` : ""}`,
+      });
+    } else setHasil({ ok: false, text: r.error ?? "Skrip merespons, tetapi tidak valid." });
     setBusy("");
   };
 
@@ -156,18 +155,10 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
       return;
     }
     // segarkan daftar tab langsung dari skrip (urutan & nama sama dengan sheet)
-    try {
-      const ping = await tesScript(settings.scriptUrl);
-      if (ping.versi) setVersiSkrip(ping.versi);
-      if (ping.ok && ping.tabs?.length) {
-        const daftar = ping.tabs.filter((t) => !t.name.startsWith("_"));
-        // daftar dari skrip bisa saja belum memuat tab yang baru dibuat — jangan sampai hilang
-        if (!daftar.some((t) => t.gid === r.gid)) daftar.unshift({ name: r.nama ?? nama, gid: String(r.gid) });
-        setSettings({ extraTabs: daftar });
-      }
-    } catch {
-      /* daftar tab lokal sudah diperbarui; abaikan */
-    }
+    await periksaSkrip();
+    // daftar dari skrip bisa saja belum memuat tab yang baru dibuat — jangan sampai hilang
+    const daftar = tabs.some((t) => t.gid === r.gid) ? null : [{ name: r.nama ?? nama, gid: String(r.gid) }, ...tabs];
+    if (daftar) setSettings({ extraTabs: daftar });
     setBusyBuat(false);
     setNamaManual(null);
     setHasilBuat({
@@ -513,14 +504,14 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
                     variant="ghost"
                     size="sm"
                     onClick={() => {
-                      setBukaKoneksi(true);
+                      setBukaKode(true);
                       window.setTimeout(
-                        () => document.getElementById("koneksi-apps-script")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                        () => document.getElementById("kode-skrip")?.scrollIntoView({ behavior: "smooth", block: "start" }),
                         80,
                       );
                     }}
                   >
-                    Perbarui skrip
+                    Lihat &amp; salin kode
                   </Btn>
                 </div>
               )}
@@ -533,7 +524,23 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
                   )}
                 >
                   {hasilBuat.ok ? <I.check className="mt-0.5 h-4 w-4 shrink-0" /> : <I.alert className="mt-0.5 h-4 w-4 shrink-0" />}
-                  <span>{hasilBuat.text}</span>
+                  <span className="min-w-[180px] flex-1">{hasilBuat.text}</span>
+                  {!hasilBuat.ok && /skrip|v\d\.\d/i.test(hasilBuat.text) && (
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => {
+                        setBukaKode(true);
+                        window.setTimeout(
+                          () => document.getElementById("kode-skrip")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                          80,
+                        );
+                      }}
+                    >
+                      Buka kode v{SCRIPT_VERSI}
+                    </Btn>
+                  )}
                 </div>
               )}
             </div>
@@ -572,7 +579,7 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
             </h2>
             <p className="mt-0.5 max-w-[640px] text-[12.5px] leading-relaxed text-muted">
               {terpasang
-                ? "Sudah tersambung lewat Web App. Ganti di sini bila alamat deployment berubah."
+                ? "Sudah tersambung lewat Web App. Kode skrip terbaru bisa disalin kapan saja di kotak di bawah."
                 : "Aplikasi ini hanya butuh satu kali penyiapan agar bisa menulis ke spreadsheet Anda."}
             </p>
           </div>
@@ -583,13 +590,54 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
           )}
         </div>
 
+        {/* Kode skrip: selalu terlihat supaya mudah disalin/diperbarui */}
+        <div id="kode-skrip" className="mt-4 scroll-mt-24 overflow-hidden rounded-xl border border-line">
+          <div className="flex flex-wrap items-center gap-2 border-b border-line bg-paper px-3 py-2">
+            <span className="font-mono text-[11.5px] text-muted">
+              Kode.gs · v{SCRIPT_VERSI} · {APPS_SCRIPT.split("\n").length} baris
+            </span>
+            {!!versiSkrip && (versiSkrip === SCRIPT_VERSI ? <Pill tone="brand">sheet v{versiSkrip}</Pill> : <Pill tone="warn">sheet masih v{versiSkrip}</Pill>)}
+            <div className="ml-auto flex gap-1.5">
+              <Btn variant="ghost" size="sm" onClick={() => setBukaKode((v) => !v)}>
+                {bukaKode ? "Sembunyikan" : "Lihat kode"}
+              </Btn>
+              <Btn
+                variant={copied === "script" ? "brand" : "primary"}
+                size="sm"
+                onClick={() =>
+                  doCopy(
+                    "script",
+                    settings.token ? APPS_SCRIPT.replace("GANTI-DENGAN-KODE-RAHASIA", settings.token) : APPS_SCRIPT,
+                    `Kode v${SCRIPT_VERSI} tersalin`,
+                  )
+                }
+              >
+                {copied === "script" ? <I.check className="h-3.5 w-3.5" /> : <I.copy className="h-3.5 w-3.5" />}
+                {copied === "script" ? "Tersalin" : "Salin kode"}
+              </Btn>
+            </div>
+          </div>
+          {bukaKode && (
+            <pre className="thin-scroll max-h-[320px] overflow-auto bg-[#151816] p-3 font-mono text-[11px] leading-relaxed text-[#d7e4dc]">{APPS_SCRIPT}</pre>
+          )}
+          <div className="space-y-1 px-3 py-2 text-[11.5px] leading-relaxed text-muted">
+            <p>
+              <b className="text-ink">Cara memperbarui:</b> Salin kode → buka spreadsheet → <b className="text-ink">Ekstensi → Apps Script</b> →
+              hapus semua isi (Ctrl+A) → tempel → <b className="text-ink">Terapkan → Kelola deployment → ikon pensil → Versi: Versi
+              baru → Deploy</b>. URL <code className="rounded bg-paper px-1 font-mono">/exec</code> tidak berubah, jadi tidak perlu
+              mengisi ulang apa pun di aplikasi.
+            </p>
+            {settings.token && <p>Kode yang disalin sudah berisi token Anda.</p>}
+          </div>
+        </div>
+
         {(!terpasang || bukaKoneksi) && (
           <div className="mt-4 grid gap-5 lg:grid-cols-2">
             <div>
               <ol className="space-y-2.5 text-[12.5px] leading-relaxed text-muted">
                 <li>
                   <b className="text-ink">1.</b> Buka spreadsheet → <b className="text-ink">Ekstensi → Apps Script</b>. Hapus isi
-                  default, tempel kode di bawah.
+                  default, lalu tempel <b className="text-ink">kode dari kotak “Kode.gs” di atas</b> (tombol Salin kode).
                 </li>
                 <li>
                   <b className="text-ink">2.</b> Ganti{" "}
@@ -607,34 +655,10 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
                 </li>
               </ol>
 
-              <div className="mt-3 overflow-hidden rounded-xl border border-line">
-                <div className="flex items-center justify-between border-b border-line bg-paper px-3 py-2">
-                  <span className="font-mono text-[11.5px] text-muted">Kode.gs · v{SCRIPT_VERSI} · {APPS_SCRIPT.split("\n").length} baris</span>
-                  <div className="flex gap-1.5">
-                    <Btn variant="ghost" size="sm" onClick={() => setBukaKode((v) => !v)}>
-                      {bukaKode ? "Sembunyikan" : "Lihat kode"}
-                    </Btn>
-                    <Btn
-                      variant={copied === "script" ? "brand" : "primary"}
-                      size="sm"
-                      onClick={() =>
-                        doCopy(
-                          "script",
-                          settings.token ? APPS_SCRIPT.replace("GANTI-DENGAN-KODE-RAHASIA", settings.token) : APPS_SCRIPT,
-                          "Kode tersalin",
-                        )
-                      }
-                    >
-                      {copied === "script" ? <I.check className="h-3.5 w-3.5" /> : <I.copy className="h-3.5 w-3.5" />}
-                      {copied === "script" ? "Tersalin" : "Salin kode"}
-                    </Btn>
-                  </div>
-                </div>
-                {bukaKode && (
-                  <pre className="thin-scroll max-h-[320px] overflow-auto bg-[#151816] p-3 font-mono text-[11px] leading-relaxed text-[#d7e4dc]">{APPS_SCRIPT}</pre>
-                )}
-              </div>
-              {settings.token && <p className="mt-2 text-[11.5px] text-muted">Kode yang disalin sudah berisi token Anda.</p>}
+              <p className="mt-3 rounded-xl bg-paper p-3 text-[11.5px] leading-relaxed text-muted">
+                Belum punya kode? Klik <b className="text-ink">Salin kode</b> pada kotak <b className="text-ink">Kode.gs · v{SCRIPT_VERSI}</b>{" "}
+                di atas kartu ini, lalu tempel di Apps Script.
+              </p>
             </div>
 
             <div>

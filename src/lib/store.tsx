@@ -183,6 +183,10 @@ type Ctx = {
   /** Tandai seluruh isian tab aktif untuk dikirim ulang (pemulihan / sinkron penuh). */
   kirimSemua: () => void;
   hapusLog: () => void;
+  /** Versi Apps Script terakhir yang terbaca dari sheet (mis. "1.3", "1.4"). */
+  versiSkrip: string;
+  /** Periksa skrip: versi & daftar tab. `true` bila skrip merespons. */
+  periksaSkrip: () => Promise<{ ok: boolean; versi?: string; nama?: string; jumlahTab?: number; error?: string }>;
   /** Pengaturan dari tautan siap pakai (#/sinkron?setup=…). */
   tautan: TautanSiapPakai | null;
   terapkanTautan: () => void;
@@ -197,6 +201,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [trendLoading, setTrendLoading] = useState(false);
   const [syncState, setSyncState] = useState<SyncState>({ status: "idle", pending: 0 });
   const [tautan, setTautan] = useState<TautanSiapPakai | null>(null);
+  const [versiSkrip, setVersiSkrip] = useState("");
 
   const dataRef = useRef(data);
   dataRef.current = data;
@@ -241,6 +246,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void (async () => {
       try {
         const r = await tesScript(st.scriptUrl);
+        if (r.versi) setVersiSkrip(String(r.versi));
         if (!r.ok || !r.tabs?.length) return;
         const extra = r.tabs.filter((t) => !t.name.startsWith("_"));
         setData((d) => ({ ...d, settings: { ...d.settings, extraTabs: extra } }));
@@ -248,6 +254,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         /* diamkan — daftar tab bawaan tetap dipakai */
       }
     })();
+  }, []);
+
+  /** Ping Apps Script: perbarui versi skrip + daftar tab. */
+  const periksaSkrip = useCallback(async () => {
+    const st = dataRef.current.settings;
+    if (!st.scriptUrl) return { ok: false, error: "URL Web App belum diisi." };
+    try {
+      const r = await tesScript(st.scriptUrl);
+      if (r.versi) setVersiSkrip(String(r.versi));
+      if (r.ok && r.tabs?.length) {
+        const extra = r.tabs.filter((t) => !t.name.startsWith("_"));
+        setData((d) => ({ ...d, settings: { ...d.settings, extraTabs: extra } }));
+      }
+      return { ok: !!r.ok, versi: r.versi, nama: r.nama, jumlahTab: r.tabs?.length };
+    } catch {
+      return { ok: false, error: "Tidak bisa terhubung ke Apps Script." };
+    }
   }, []);
 
   /* ----------------------------- sinkron otomatis ----------------------------- */
@@ -649,6 +672,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     kirimSemua,
     hapusLog,
     tautan,
+    versiSkrip,
+    periksaSkrip,
     terapkanTautan,
     buangTautan,
   };
