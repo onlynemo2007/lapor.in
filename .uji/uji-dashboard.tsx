@@ -10,6 +10,7 @@ const CSV = [
   "LAPORAN MINGGU I BULAN NOVEMBER 2026,,,,,,",
   ",,A,KEGIATAN TIM,,,,",
   "No,,Tim,Tanggal,Uraian,,,",
+  ',,Sekretariat,2 November 2026,"tak dikenal",,,',
   ',,Humas,2 November 2026,"a1",,,',
   ',,Keuangan,,"k1",,,',
   ',,Humas,3 November 2026,"a2",,,',
@@ -81,6 +82,8 @@ async function main() {
   cek("angka kelengkapan sesuai isi sheet", teks().includes(`${r.slotTerisi}/${r.slotTotal}`), `${r.slotTerisi}/${r.slotTotal} :: ${teks().slice(0, 200)}`);
   const kotakTerisi = Array.from(document.querySelectorAll("button")).filter((b) => (b.textContent ?? "").trim() === "1");
   cek("kotak peta menampilkan jumlah butir", kotakTerisi.length >= 4, String(kotakTerisi.length));
+  cek("baris tak terbaca dilaporkan", /belum bisa dipetakan/.test(teks()), teks().slice(-300));
+  cek("tim yang dikenal tetap n/a", /n\/a/.test(teks()), "");
 
   const lulus = hasil.filter((h) => h.lulus).length;
   hasil.filter((h) => !h.lulus).forEach((h) => console.log("  GAGAL:", h.nama, "→", h.info));

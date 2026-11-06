@@ -1,5 +1,5 @@
 import { parseWeek } from "/tmp/sheet.mjs";
-import { ringkas, slotKey } from "/tmp/model.mjs";
+import { ringkas, slotAda, slotKey } from "/tmp/model.mjs";
 
 const hasil = [];
 const cek = (nama, lulus, info = "") => {
@@ -80,6 +80,81 @@ const cek = (nama, lulus, info = "") => {
   const w = parseWeek(csv, "1", "Nov I");
   cek("layout biasa tetap terbaca", w.dates.length === 2 && (w.kegiatan["humas||3 november 2026"] ?? []).length === 1, JSON.stringify(w.kegiatan));
   cek("baris kosong tidak menggeser tanggal", w.rows.A["humas||2 november 2026"] === 4, JSON.stringify(w.rows.A));
+}
+
+
+/* ---------- 5. nama tim dengan penomoran / kata tambahan ---------- */
+{
+  const csv = [
+    "LAPORAN MINGGU I BULAN NOVEMBER 2026,,,,,,",
+    ",,A,KEGIATAN TIM,,,,",
+    "No,,Tim,Tanggal,Uraian,,,",
+    ',,VI. Humas Datin,2 November 2026,"h1",,,',
+    ',,"Humas, Datin",3 November 2026,"h2",,,',
+    ',,Datin,4 November 2026,"h3",,,',
+    ',,VII. Hukum,2 November 2026,"k1",,,',
+    ',,Hukum,3 November 2026,"k2",,,',
+    ',,5. Program dan Monev,2 November 2026,"p1",,,',
+    ',,Program dan Monev,3 November 2026,"p2",,,',
+    ',,Monev,2 November 2026,"mv1",,,',
+  ].join("\n");
+  const w = parseWeek(csv, "1", "Nov I");
+  cek("tim berpenomoran VI → Humas", (w.kegiatan["humas||2 november 2026"] ?? []).length === 1, JSON.stringify(Object.keys(w.kegiatan)));
+  cek("tim \"Humas, Datin\" → Humas", (w.kegiatan["humas||3 november 2026"] ?? []).length === 1, JSON.stringify(Object.keys(w.kegiatan)));
+  cek("tim \"Datin\" saja → Humas", (w.kegiatan["humas||4 november 2026"] ?? []).length === 1, JSON.stringify(Object.keys(w.kegiatan)));
+  cek("tim berpenomoran VII → Hukum", (w.kegiatan["hukum||2 november 2026"] ?? []).length === 1, JSON.stringify(Object.keys(w.kegiatan)));
+  cek("tim Hukum biasa terbaca", (w.kegiatan["hukum||3 november 2026"] ?? []).length === 1, JSON.stringify(Object.keys(w.kegiatan)));
+  cek("Program berpenomoran terbaca", (w.kegiatan["program|program|2 november 2026"] ?? []).length === 1, JSON.stringify(Object.keys(w.kegiatan)));
+  cek("sub Monev di kolom Tim terbaca", (w.kegiatan["program|monev|2 november 2026"] ?? []).length === 1, JSON.stringify(Object.keys(w.kegiatan)));
+  cek("sub Monev tidak menimpa Program", (w.kegiatan["program|program|3 november 2026"] ?? [])[0] === "p2", JSON.stringify(w.kegiatan["program|program|3 november 2026"]));
+  cek("tidak ada baris tak terbaca", !w.takTerbaca, JSON.stringify(w.takTerbaca));
+}
+
+/* ---------- 6. tanggal berteks (nama hari, rentang, tanda hubung) ---------- */
+{
+  const csv = [
+    "LAPORAN MINGGU I BULAN NOVEMBER 2026,,,,,,",
+    ",,A,KEGIATAN TIM,,,,",
+    "No,,Tim,Tanggal,Uraian,,,",
+    ',,Humas,"Senin, 2 November 2026","h1",,,',
+    ',,Umum,"2 s.d. 4 November 2026","u1",,,',
+    ',,Keuangan,02-Nov-2026,"k1",,,',
+  ].join("\n");
+  const w = parseWeek(csv, "1", "Nov I");
+  cek("tanggal dengan nama hari terbaca", (w.kegiatan["humas||2 november 2026"] ?? []).length === 1, JSON.stringify(Object.keys(w.kegiatan)));
+  cek("rentang tanggal pakai tanggal pertama", (w.kegiatan["umum||2 november 2026"] ?? []).length === 1, JSON.stringify(w.dates));
+  cek("tanggal bertanda hubung terbaca", (w.kegiatan["keuangan||2 november 2026"] ?? []).length === 1, JSON.stringify(Object.keys(w.kegiatan)));
+  cek("tanggal tidak dobel", w.dates.length === 1, JSON.stringify(w.dates));
+}
+
+/* ---------- 7. n/a hanya untuk tim yang tidak ada di tab ---------- */
+{
+  const csv = [
+    "LAPORAN MINGGU I BULAN NOVEMBER 2026,,,,,,",
+    ",,A,KEGIATAN TIM,,,,",
+    "No,,Tim,Tanggal,Uraian,,,,",
+    ',,Humas,2 November 2026,"h1",,,',
+    ',,Humas,3 November 2026,,,,',
+  ].join("\n");
+  const w = parseWeek(csv, "1", "Nov I");
+  cek("tanggal tanpa baris tetap bisa diisi", slotAda(w, "humas", "", "4 November 2026") === true, JSON.stringify(w.dates));
+  cek("tim yang tidak ada di tab tetap n/a", slotAda(w, "hukum", "", "2 November 2026") === false, JSON.stringify(Object.keys(w.rows.A)));
+}
+
+/* ---------- 8. baris tak dikenal dicatat ---------- */
+{
+  const csv = [
+    "LAPORAN MINGGU I BULAN NOVEMBER 2026,,,,,,",
+    ",,A,KEGIATAN TIM,,,,",
+    "No,,Tim,Tanggal,Uraian,,,,",
+    ',,Humas,2 November 2026,"h1",,,',
+    ',,Sekretariat,2 November 2026,"x",,,',
+    ',,Humas,,,"tanpa tanggal",,,',
+  ].join("\n");
+  const w = parseWeek(csv, "1", "Nov I");
+  cek("baris dengan tim tak dikenal dicatat", (w.takTerbaca ?? []).some((t) => t.baris === 5 && /Sekretariat/.test(t.teks)), JSON.stringify(w.takTerbaca));
+  cek("baris tanpa tanggal & tanpa tanggal warisan dicatat", (w.takTerbaca ?? []).some((t) => t.baris === 6), JSON.stringify(w.takTerbaca));
+  cek("satu-satunya tanggal tetap terbaca", w.dates.length === 1, JSON.stringify(w.dates));
 }
 
 const lulus = hasil.filter((h) => h.lulus).length;

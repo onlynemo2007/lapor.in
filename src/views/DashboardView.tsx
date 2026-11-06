@@ -208,6 +208,19 @@ export default function DashboardView() {
               })}
             </tbody>
           </table>
+          {!!week.takTerbaca?.length && (
+            <p
+              className="mt-3 flex items-start gap-1.5 rounded-lg bg-warn-soft px-3 py-2 text-[11.5px] leading-relaxed text-[#8a5a12]"
+              title={week.takTerbaca.map((t) => `baris ${t.baris}: ${t.teks}`).join("\n")}
+            >
+              <I.alert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                {week.takTerbaca.length} baris di tab ini belum bisa dipetakan ke tim/tanggal — baris{" "}
+                {week.takTerbaca.slice(0, 5).map((t) => t.baris).join(", ")}
+                {week.takTerbaca.length > 5 ? ", …" : ""}. Arahkan kursor untuk melihat isinya.
+              </span>
+            </p>
+          )}
         </div>
       </Card>
 

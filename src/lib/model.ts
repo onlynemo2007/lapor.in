@@ -199,6 +199,8 @@ export type WeekData = {
   meta: Record<string, { oleh: string; at: number; ganti?: boolean }>;
   importedAt: number;
   syncedAt?: number;
+  /** baris bagian A yang tidak bisa dipetakan ke tim/tanggal (nama tim tak dikenal / tanggal kosong) */
+  takTerbaca?: { baris: number; teks: string }[];
 };
 
 export const emptyPresensi = (): Presensi => ({
@@ -304,6 +306,35 @@ export const cleanDate = (s: string) => {
   if (!d) return s.trim();
   const b = BULAN[d.getMonth()];
   return `${d.getDate()} ${b[0].toUpperCase()}${b.slice(1)} ${d.getFullYear()}`;
+};
+
+/**
+ * Tanggal yang terselip di dalam teks bebas — dipakai saat sel tanggal tidak berisi tanggal saja:
+ *   "Senin, 2 November 2026" → "2 November 2026"
+ *   "2 s.d. 6 November 2026"  → "2 November 2026" (tanggal pertama)
+ *   "02-Nov-2026" / "2 - 11 - 2026" → "2 November 2026"
+ */
+export const tanggalDariTeks = (s: string): string => {
+  const t = (s ?? "").replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  if (parseTanggal(t)) return cleanDate(t);
+  // "02-Nov-2026", "2 / Nov / 2026" → "2 Nov 2026"
+  const pisah = t
+    .replace(/(\d)\s*[-–/.·]\s*([A-Za-z])/g, "$1 $2")
+    .replace(/([A-Za-z])\s*[-–/.·]\s*(\d)/g, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (pisah !== t && parseTanggal(pisah)) return cleanDate(pisah);
+  const iso = t.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso && parseTanggal(`${iso[1]}-${iso[2]}-${iso[3]}`)) return cleanDate(`${iso[1]}-${iso[2]}-${iso[3]}`);
+  const angka = t.match(/(\d{1,2})\s*[/\-.]\s*(\d{1,2})\s*[/\-.]\s*(\d{4})/);
+  if (angka && parseTanggal(`${angka[1]}/${angka[2]}/${angka[3]}`)) return cleanDate(`${angka[1]}/${angka[2]}/${angka[3]}`);
+  const nama = t.match(/(\d{1,2})\s*(?:s\.?\s*d\.?|sampai|hingga|[-–—])?\s*\d{0,2}\s+([A-Za-z]{3,})\.?,?\s+(\d{4})/);
+  if (nama) {
+    const gabung = `${nama[1]} ${nama[2]} ${nama[3]}`;
+    if (parseTanggal(gabung)) return cleanDate(gabung);
+  }
+  return "";
 };
 
 /* ------------------------- minggu berikutnya ------------------------- */
@@ -639,9 +670,19 @@ export const rupiahPendek = (n: number) => {
 /* ------------------------------ ringkasan ------------------------------ */
 
 /** Apakah baris tim/sub/tanggal ada di tab (tab lama bisa punya susunan tim berbeda). */
+/**
+ * Apakah baris tim/sub ini ada di tab? "n/a" hanya untuk tim yang sama sekali tidak ada di tab —
+ * kalau timnya ada tetapi tanggal itu belum punya baris, kotaknya tetap bisa diisi.
+ */
 export const slotAda = (w: WeekData, tim: string, sub: string, d: string) => {
   const A = w.rows?.A ?? {};
-  return Object.keys(A).length === 0 || !!A[slotKey(tim, sub, d)];
+  const keys = Object.keys(A);
+  if (!keys.length) return true;
+  if (A[slotKey(tim, sub, d)]) return true;
+  const timAda = keys.some((k) => k.startsWith(`${tim}|`));
+  if (!timAda) return false;
+  const subAda = keys.some((k) => k.startsWith(`${tim}|${norm(sub)}|`));
+  return subAda;
 };
 
 export type Ringkasan = {

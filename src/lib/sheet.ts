@@ -10,10 +10,9 @@ import {
   SPREADSHEET_ID,
   SLOT_ROWS,
   TIMS,
-  cleanDate,
   emptyAplikasi,
   formatPegawai,
-  isTanggal,
+  tanggalDariTeks,
   joinUraian,
   lampKey,
   norm,
@@ -59,9 +58,35 @@ export function parseCSV(text: string): string[][] {
   return rows;
 }
 
+/**
+ * Nama tim di sheet sering ditulis dengan penomoran atau kata tambahan:
+ * "VI. Humas Datin", "Humas, Datin", "Datin", "V. Program dan Monev", "Monev", "7 Hukum".
+ */
 const timIdDari = (name: string) => {
-  const w = norm(name).split(" ")[0];
-  return TIMS.find((t) => t.id === w)?.id ?? null;
+  const s = norm(name).replace(/[.,;:()[\]{}]/g, " ").replace(/\s+/g, " ").trim();
+  if (!s) return null;
+  // buang penomoran di depan ("vi", "5", "5.")
+  const bersih = s.replace(/^(?:[ivx]+|\d+)\s+/, "").trim() || s;
+  const kata = bersih.split(" ").filter(Boolean);
+  const cocok = (w: string) => TIMS.find((t) => t.id === w)?.id ?? null;
+  const pertama = cocok(kata[0] ?? "");
+  if (pertama) return pertama;
+  for (const k of kata) {
+    const id = cocok(k);
+    if (id) return id;
+  }
+  if (kata.some((k) => /^(datin|humasdatin)$/.test(k))) return "humas";
+  if (kata.some((k) => /^(monev|monitoring|evaluasi)$/.test(k))) return "program";
+  if (kata.some((k) => /^(perundang|perundangan|peraturan|legal)$/.test(k))) return "hukum";
+  return null;
+};
+
+/** Sel berisi judul sub-tim: "Program" / "Monev" (boleh dengan titik atau huruf besar). */
+const subDariGlobal = (x: string) => {
+  const t = norm(x).replace(/[.:]/g, "").trim();
+  if (t === "program") return "Program";
+  if (t === "monev" || t === "monitoring dan evaluasi" || t === "monitoring & evaluasi") return "Monev";
+  return "";
 };
 
 /* ---------------------------- parse tab ---------------------------- */
@@ -254,6 +279,10 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
   const firstRow: Record<string, number> = {};
   // tanggal terakhir yang terbaca di bagian A — dipakai bila sel tanggal dikosongkan (merge)
   let tglTerakhir = "";
+  // nama tim terakhir yang tertulis di kolom Tim (sel gabungan membuat sel berikutnya kosong)
+  let timSel = "";
+  // baris bagian A yang tidak bisa dipetakan ke tim/tanggal — ditampilkan di dashboard
+  const takTerbaca: { baris: number; teks: string }[] = [];
   const lampRaw: Record<string, string[]> = {};
   const cList: { tgl: string; row: number; r: string[] }[] = [];
   const pList: { tgl: string; row: number; r: string[] }[] = [];
@@ -275,6 +304,7 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
       if (sec === "C") w.judulPresensi = bagian.judul;
       tim = null;
       sub = "";
+      timSel = "";
       return;
     }
     if (r.some((x) => /^Rekapitulasi Penggunaan Aplikasi Presensi/i.test(x.trim()))) return void (sec = "P");
@@ -352,26 +382,36 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
     /* ---- baris data ---- */
     if (sec === "A") {
       const T = cell(c.tim), G = cell(c.tgl), U = cell(c.ur);
-      if (T && norm(T) !== "tim") {
-        const id = timIdDari(T);
-        if (id) {
-          tim = id;
-          sub = "";
+      // judul sub-tim ("Program" / "Monev") bisa ada di kolom tim, kolom tanggal, atau kolom uraian
+      const subG = subDariGlobal(G), subU = subDariGlobal(U), subT = subDariGlobal(T);
+      if (norm(T) === "tim") return;
+
+      if (T && subT) {
+        // sel tim berisi "Monev" / "Program": tim Program, sub-nya sesuai tulisan sel
+        tim = "program";
+        sub = subT;
+        timSel = "";
+      } else if (T) {
+        // sel tim hanya mengubah tim bila isinya memang nama tim (sel gabungan/merge biasanya kosong)
+        if (norm(T) !== timSel) {
+          const id = timIdDari(T);
+          if (id) {
+            tim = id;
+            sub = "";
+            timSel = norm(T);
+          } else {
+            takTerbaca.push({ baris: sheetRow, teks: T });
+          }
         }
       }
       if (!tim) return;
 
-      // baris judul sub-tim ("Program" / "Monev") — boleh di kolom tanggal atau kolom uraian
-      const subDari = (x: string) => {
-        const t = x.trim().toLowerCase();
-        return t === "program" ? "Program" : t === "monev" ? "Monev" : "";
-      };
-      const subKolom = subDari(G) || (!isTanggal(G) && !G.trim() ? subDari(U) : "");
-      if (subKolom) {
-        sub = subKolom;
+      // baris judul sub-tim: tidak memuat kegiatan, cukup jadi penanda sub berikutnya
+      if (subG || subU) {
+        sub = subG || subU;
         return;
       }
-      // sub pertama untuk tim Program/Monev bila sheet tidak menulis judul sub-nya
+      // sub pertama untuk tim Program dan Monev bila sheet tidak menulis judul sub-nya
       if (tim === "program" && !sub) sub = "Program";
 
       // tautan lampiran: kolom setelah uraian yang berisi URL
@@ -388,9 +428,13 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
       }
 
       // Tanggal boleh kosong bila selnya digabung (merge) — pakai tanggal terakhir di atasnya,
-      // asalkan baris ini memang berisi uraian kegiatan.
-      const tgl = isTanggal(G) ? cleanDate(G) : !G.trim() && U.trim() ? tglTerakhir : "";
-      if (!tgl) return;
+      // asalkan baris ini memang berisi uraian kegiatan. Sel boleh berisi teks tambahan
+      // ("Senin, 2 November 2026", "2 s.d. 6 November 2026").
+      const tgl = tanggalDariTeks(G) || (!G.trim() && U.trim() ? tglTerakhir : "");
+      if (!tgl) {
+        if (T || U) takTerbaca.push({ baris: sheetRow, teks: [T, G, U].filter((x) => x.trim()).join(" · ") });
+        return;
+      }
       tglTerakhir = tgl;
       if (!w.dates.some((x) => norm(x) === norm(tgl))) w.dates.push(tgl);
       const k = slotKey(tim, sub, tgl);
@@ -410,9 +454,11 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
         }
       }
     } else if (sec === "C") {
-      if (isTanggal(cell(c.cTgl))) cList.push({ tgl: cell(c.cTgl), row: sheetRow, r });
+      const tgl = tanggalDariTeks(cell(c.cTgl));
+      if (tgl) cList.push({ tgl, row: sheetRow, r });
     } else if (sec === "P") {
-      if (isTanggal(cell(c.pTgl))) pList.push({ tgl: cell(c.pTgl), row: sheetRow, r });
+      const tgl = tanggalDariTeks(cell(c.pTgl));
+      if (tgl) pList.push({ tgl, row: sheetRow, r });
     } else if ((sec === "R" || sec === "D") && keuHeader) {
       const kode = cell(c.rKode), ur = cell(c.rUr);
       if (kode && ur && norm(kode) !== "kode" && cell(c.rPagu)) {
@@ -448,6 +494,8 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
     w.rows.L[lk] = row;
     if (lampRaw[lk]?.length) w.lampiran[lk] = lampRaw[lk].join("\n");
   });
+
+  if (takTerbaca.length) w.takTerbaca = takTerbaca;
 
   // presensi & aplikasi: cocokkan tanggal; bila tanggal di sheet salah ketik, pakai urutan baris
   const keyFor = (tgl: string, i: number) => (w.dates.some((d) => norm(d) === norm(tgl)) ? norm(tgl) : w.dates[i] ? norm(w.dates[i]) : norm(tgl));
