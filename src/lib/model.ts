@@ -106,6 +106,30 @@ export const serapan = (realisasi: number, pagu: number) => (pagu > 0 ? (realisa
 export const totalAnggaran = (arr: Anggaran[]) =>
   arr.reduce((t, a) => ({ pagu: t.pagu + a.pagu, realisasi: t.realisasi + a.realisasi }), { pagu: 0, realisasi: 0 });
 
+/** Satu baris pada tabel keuangan bebas (Rekapitulasi UP, Pembayaran LS, Rencana Penarikan, …). */
+export type BarisKeuangan = {
+  /** nomor baris di sheet (1-based) */
+  nomor: number;
+  /** teks penanda baris (kolom label) — dipakai aplikasi untuk memastikan baris tidak bergeser */
+  label: string;
+  /** indeks kolom (0-based) tempat teks penanda berada */
+  labelKolom: number;
+  /** nilai sel per indeks kolom, hanya sel yang berisi */
+  sel: Record<number, string>;
+};
+
+/** Tabel keuangan apa pun di bagian D — dibaca apa adanya dari sheet. */
+export type TabelKeuangan = {
+  judul: string;
+  /** nomor baris judul kolom (1-based) */
+  header: number;
+  kolom: { index: number; label: string }[];
+  baris: BarisKeuangan[];
+};
+
+/** Kunci satu sel tabel keuangan: "baris:kolom". */
+export const selKey = (baris: number, kolom: number) => `${baris}:${kolom}`;
+
 export type RowMap = {
   A: Record<string, number>;
   L: Record<string, number>;
@@ -162,6 +186,10 @@ export type WeekData = {
   presensi: Record<string, Presensi>;
   aplikasi: Record<string, Aplikasi>;
   anggaran: Anggaran[];
+  /** tabel keuangan lain di bagian D (dibaca generik: judul, kolom, baris) */
+  tabelKeuangan: TabelKeuangan[];
+  /** isian sel tabel keuangan yang belum terkirim: "baris:kolom" → teks */
+  selKeuangan: Record<string, string>;
   rows: RowMap;
   dirty: Record<string, true>;
   meta: Record<string, { oleh: string; at: number; ganti?: boolean }>;

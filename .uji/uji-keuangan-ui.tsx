@@ -15,7 +15,19 @@ const CSV = [
   "No,Kode,Uraian,Pagu,Realisasi,,",
   '1,032.12.01,"Perjalanan dinas",100000000,25000000,,',
   '2,032.12.02,"Sewa kendaraan",50000000,10000000,,',
-  ",,Total,150000000,35000000,,",
+  ",,,,,,,",
+  "Rekapitulasi UP,,,,,,",
+  "No,Uraian,Pagu,Realisasi,Sisa,,",
+  "1,UP Januari,100000000,20000000,80000000,,",
+  "2,UP Februari,50000000,10000000,40000000,,",
+  ",,,,,,,",
+  "Pembayaran Melalui LS,,,,,,",
+  "No,Uraian,Nilai,Keterangan,,,",
+  "1,Honor narasumber,15000000,Lunas,,,",
+  ",,,,,,,",
+  "Rencana Penarikan,,,,,,",
+  "Bulan,Jumlah,Keterangan,,,,",
+  "November,75000000,,,,",
 ].join("\n");
 
 let aktif: ReturnType<typeof useApp> | null = null;
@@ -104,6 +116,31 @@ async function main() {
     await new Promise((r) => setTimeout(r, 60));
   });
   cek("pagu baris kedua tersimpan", c().week!.anggaran.find((a) => a.kode === "032.12.02")!.pagu === 60000000, JSON.stringify(c().week!.anggaran));
+
+  /* ---- tabel keuangan generik (Rekapitulasi UP / Pembayaran LS / Rencana Penarikan) ---- */
+  const t2 = document.body.textContent ?? "";
+  cek("tabel Rekapitulasi UP tampil", t2.includes("Rekapitulasi UP"), t2.slice(0, 200));
+  cek("tabel Pembayaran Melalui LS tampil", t2.includes("Pembayaran Melalui LS"));
+  cek("tabel Rencana Penarikan tampil", t2.includes("Rencana Penarikan"));
+  cek("tiga tabel terbaca", c().week!.tabelKeuangan.length === 3, JSON.stringify(c().week!.tabelKeuangan.map((x) => x.judul)));
+
+  const semua = Array.from(document.querySelectorAll("input")) as HTMLInputElement[];
+  const target = semua.find((i) => i.value === "20000000");
+  cek("sel realisasi UP bisa diisi", !!target, JSON.stringify(semua.map((i) => i.value).slice(0, 12)));
+  await act(async () => {
+    if (target) await isi(target, "30000000");
+  });
+  const simpan3 = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("Simpan")) as HTMLButtonElement;
+  await act(async () => {
+    simpan3.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  cek("nilai sel tersimpan", c().week!.selKeuangan["13:3"] === "30000000", JSON.stringify(c().week!.selKeuangan));
+  cek("ditandai belum terkirim", c().week!.dirty["K:13:3"] === true, JSON.stringify(c().week!.dirty));
+  const p3 = buildPayload(c().week!, "tok", "Uji", true);
+  const sel3 = p3.sel.find((x) => x.baris === 13 && x.kolom === 3);
+  cek("payload sel memuat baris & kolom", !!sel3 && sel3.nilai === "30000000", JSON.stringify(p3.sel));
+  cek("payload sel membawa label baris", !!sel3 && sel3.label === "1" && sel3.labelKolom === 0, JSON.stringify(sel3));
 
   const lulus = hasil.filter((h) => h.lulus).length;
   hasil.filter((h) => !h.lulus).forEach((h) => console.log("  GAGAL:", h.nama, "→", h.info));

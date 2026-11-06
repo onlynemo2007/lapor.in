@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { setKeuangan, useApp } from "../lib/store";
-import { parseAngka, rupiah, rupiahPendek, serapan, totalAnggaran } from "../lib/model";
+import { setKeuangan, setSelKeuangan, useApp } from "../lib/store";
+import { parseAngka, rupiah, rupiahPendek, selKey, serapan, totalAnggaran } from "../lib/model";
 import { Btn, Card, I, Pill, SectionTitle, cx, useToast } from "../components/ui";
 import { StateGate } from "./common";
 import { jamSinkron } from "../lib/sync";
@@ -14,6 +14,7 @@ export default function KeuanganView() {
   const { week, settings, updateWeek, reload, dibacaAt } = useApp();
   const toast = useToast();
   const [draft, setDraft] = useState<Record<string, Draft>>({});
+  const [selDraft, setSelDraft] = useState<Record<string, string>>({});
   const [cari, setCari] = useState("");
   const awal = useRef<Record<string, Draft>>({});
 
@@ -39,6 +40,20 @@ export default function KeuanganView() {
   const total = useMemo(() => totalAnggaran(baris), [baris]);
   const persen = serapan(total.realisasi, total.pagu);
 
+  // tabel keuangan lain (Rekapitulasi UP, Pembayaran LS, Rencana Penarikan, …)
+  const tabel = week?.tabelKeuangan ?? [];
+  const nilaiSheet = useMemo(() => {
+    const m: Record<string, string> = {};
+    tabel.forEach((t) =>
+      t.baris.forEach((r) => t.kolom.forEach((k) => (m[selKey(r.nomor, k.index)] = r.sel[k.index] ?? ""))),
+    );
+    return m;
+  }, [tabel]);
+  const nilai = (kunci: string) => selDraft[kunci] ?? week?.selKeuangan?.[kunci] ?? nilaiSheet[kunci] ?? "";
+  const selBerubah = Object.keys(selDraft).filter(
+    (k) => selDraft[k] !== (week?.selKeuangan?.[k] ?? nilaiSheet[k] ?? ""),
+  );
+
   const berubah = baris.filter((a) => {
     const d = draft[a.kode];
     if (!d) return false;
@@ -51,7 +66,7 @@ export default function KeuanganView() {
     setDraft((s) => ({ ...s, [kode]: { ...(s[kode] ?? { uraian: "", pagu: "", realisasi: "" }), ...patch } }));
 
   const simpan = () => {
-    if (!berubah.length) return;
+    if (!berubah.length && !selBerubah.length) return;
     updateWeek((w) => {
       let next = w;
       berubah.forEach((a) => {
@@ -63,11 +78,15 @@ export default function KeuanganView() {
           settings.nama,
         );
       });
+      selBerubah.forEach((k) => {
+        const [b, c] = k.split(":");
+        next = setSelKeuangan(next, Number(b), Number(c), selDraft[k], settings.nama);
+      });
       return next;
     });
     awal.current = { ...draft };
     toast(
-      `Realisasi keuangan tersimpan · ${berubah.length} baris${settings.scriptUrl && settings.token && settings.autoSync ? " · langsung ke Sheet" : ""}`,
+      `Realisasi keuangan tersimpan · ${berubah.length + selBerubah.length} isian${settings.scriptUrl && settings.token && settings.autoSync ? " · langsung ke Sheet" : ""}`,
     );
   };
 
@@ -92,9 +111,9 @@ export default function KeuanganView() {
           <Btn variant="ghost" size="sm" onClick={() => void reload(undefined, true)} title="Ambil isi terbaru dari Google Sheet">
             <I.refresh className="h-4 w-4" /> Ambil data terbaru
           </Btn>
-          <Btn variant="brand" onClick={simpan} disabled={!berubah.length}>
+          <Btn variant="brand" onClick={simpan} disabled={!berubah.length && !selBerubah.length}>
             <I.check className="h-4 w-4" />
-            Simpan{berubah.length ? ` (${berubah.length})` : ""}
+            Simpan{berubah.length + selBerubah.length ? ` (${berubah.length + selBerubah.length})` : ""}
           </Btn>
         </div>
       </div>
@@ -220,6 +239,66 @@ export default function KeuanganView() {
           </p>
         )}
       </Card>
+
+      {tabel.map((t) => (
+        <Card key={`${t.judul}-${t.header}`} className="p-4 sm:p-5">
+          <SectionTitle
+            title={t.judul}
+            sub={`${t.baris.length} baris · kolom mengikuti sheet (baris ${t.header})`}
+            right={<Pill>{t.kolom.length} kolom</Pill>}
+          />
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
+              <thead>
+                <tr className="border-b border-line text-left text-[11px] uppercase tracking-wider text-muted">
+                  {t.kolom.map((k) => (
+                    <th key={k.index} className="whitespace-nowrap py-2 pr-2 font-semibold">
+                      {k.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {t.baris.map((r) => (
+                  <tr key={r.nomor} className="border-b border-line/70 align-top">
+                    {t.kolom.map((k) => {
+                      const kunci = selKey(r.nomor, k.index);
+                      const kotor = selDraft[kunci] !== undefined && selDraft[kunci] !== (week.selKeuangan?.[kunci] ?? nilaiSheet[kunci] ?? "");
+                      if (k.index === r.labelKolom)
+                        return (
+                          <td key={k.index} className="py-2 pr-2 font-semibold">
+                            {r.sel[k.index] ?? r.label}
+                          </td>
+                        );
+                      return (
+                        <td key={k.index} className="py-1.5 pr-2">
+                          <input
+                            value={nilai(kunci)}
+                            onChange={(e) => setSelDraft((d) => ({ ...d, [kunci]: e.target.value }))}
+                            placeholder="—"
+                            className={cx(
+                              "w-full min-w-[92px] rounded-lg border bg-white px-2 py-1.5 text-[12px] outline-none focus:border-brand",
+                              kotor ? "border-warn bg-warn-soft/40" : "border-line",
+                            )}
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ))}
+
+      {tabel.length > 0 && (
+        <p className="text-[11.5px] leading-relaxed text-muted">
+          Sel yang diubah ditulis ke baris &amp; kolom yang sama dengan pengaman: bila barisnya bergeser di sheet,
+          aplikasi menolak menulis dan menandainya gagal (tidak menimpa baris lain). Kolom penanda baris sengaja
+          tidak bisa diubah dari sini.
+        </p>
+      )}
     </div>
   );
 }

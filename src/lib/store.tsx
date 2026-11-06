@@ -11,6 +11,7 @@ import {
   norm,
   lampiranPerTanggal,
   normalisasiLampiran,
+  selKey,
   samaLampiran,
   SLOT_ROWS,
   TIMS,
@@ -774,6 +775,17 @@ export function setKeuangan(w: WeekData, kode: string, patch: { uraian?: string;
     anggaran,
     dirty: { ...w.dirty, [`R:${kode}`]: true },
     meta: { ...w.meta, [`R:${kode}`]: { oleh, at: Date.now() } },
+  };
+}
+
+/** Ubah satu sel tabel keuangan (Rekapitulasi UP, Pembayaran LS, Rencana Penarikan, …). */
+export function setSelKeuangan(w: WeekData, baris: number, kolom: number, teks: string, oleh: string): WeekData {
+  const k = selKey(baris, kolom);
+  return {
+    ...w,
+    selKeuangan: { ...w.selKeuangan, [k]: teks },
+    dirty: { ...w.dirty, [`K:${k}`]: true },
+    meta: { ...w.meta, [`K:${k}`]: { oleh, at: Date.now() } },
   };
 }
 
