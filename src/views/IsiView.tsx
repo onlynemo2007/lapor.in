@@ -114,10 +114,12 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
   }, [key, week.gid]);
 
   const tersimpan = week.kegiatan[key] ?? [];
-  // tautan milik tanggal ini vs tanggal lain pada sel yang sama
+  // tautan milik tanggal ini vs tanggal lain pada tim yang sama
   const entriLamp = parseLampiran(week.lampiran[lk] ?? "");
   const urlTersimpan = lampiranTanggal(week.lampiran[lk] ?? "", slot.d);
-  const jumlahLain = entriLamp.filter((e) => norm(e.tanggal) !== norm(slot.d)).length;
+  const entriTgl = entriLamp.filter((e) => norm(e.tanggal) === norm(slot.d));
+  const jumlahLain = entriLamp.length - entriTgl.length;
+  const barisLamp = week.rows.A[key] ?? week.rows.L[lk];
   const samaDaftar = (a: string[], b: string[]) =>
     a.length === b.length && a.every((u, i) => u.toLowerCase() === (b[i] ?? "").toLowerCase());
   const berubah =
@@ -304,8 +306,8 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
           Link bukti data dukung
           <span className="font-medium normal-case tracking-normal">
             {" "}
-            (satu sel untuk {slot.sub || tim.label} minggu ini · kolom {hurufKolom(week.cols.lamp)} · tiap tautan diberi
-            tanggalnya)
+            (tautan {tanggalPendek(slot.d)} ditulis di baris tanggal itu · kolom {hurufKolom(week.cols.lamp)} ·
+            {slot.sub || tim.label} minggu ini)
           </span>
         </label>
 
@@ -379,9 +381,10 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
           </Btn>
         </div>
         <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">
-          Tiap tautan ditulis di sel sheet dengan tanggalnya, mis.{" "}
-          <span className="font-mono">{slot.d}: https://…</span>. Tautan tanggal lain hanya <b>ditambahkan</b> — skrip
-          membaca isi sel lebih dulu, jadi tidak ada yang terhapus kecuali Anda menekan tombol hapus.
+          Tautan di sini ditulis ke <b>baris {tanggalPendek(slot.d)}</b> (kolom{" "}
+          {hurufKolom(week.cols.lamp)}) sebagai <span className="font-mono">{slot.d}: https://…</span>. Tautan tanggal
+          lain tetap di barisnya masing-masing — skrip hanya menambah, tidak ada yang terhapus kecuali Anda menekan
+          tombol hapus.
         </p>
 
         <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-5">
@@ -428,18 +431,20 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
               {joinUraian(items) || <span className="text-[#b9b8b2]">(kosong)</span>}
             </pre>
           </div>
-          {entriLamp.length > 0 && (
+          {entriTgl.length > 0 && (
             <>
               <div className="mt-2 rounded-xl border border-line bg-paper">
                 <div className="flex border-b border-line font-mono text-[10.5px] text-muted">
                   <span className="w-12 border-r border-line px-2 py-1.5">
                     {hurufKolom(week.cols.lamp)}
-                    {week.rows.L[lk] ?? "?"}
+                    {barisLamp ?? "?"}
                   </span>
-                  <span className="px-2 py-1.5">Lampiran ({entriLamp.length} tautan)</span>
+                  <span className="px-2 py-1.5">
+                    Lampiran {tanggalPendek(slot.d)} ({entriTgl.length} tautan)
+                  </span>
                 </div>
                 <pre className="max-h-[160px] overflow-auto whitespace-pre-wrap p-3 font-mono text-[11.5px] leading-relaxed">
-                  {susunLampiran(entriLamp)}
+                  {susunLampiran(entriTgl)}
                 </pre>
               </div>
             </>

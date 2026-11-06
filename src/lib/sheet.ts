@@ -15,11 +15,12 @@ import {
   joinUraian,
   lampKey,
   norm,
-  normalisasiLampiran,
+  parseLampiran,
   parseAngka,
   parsePegawai,
   slotKey,
   splitUraian,
+  susunLampiran,
 } from "./model";
 
 /* ------------------------------- CSV ------------------------------- */
@@ -422,7 +423,8 @@ export type Payload = {
   gid: string;
   oleh: string;
   kegiatan: { tim: string; sub: string; tanggal: string; uraian: string }[];
-  lampiran: { tim: string; sub: string; url: string; gabung?: boolean }[];
+  /** satu entri per tanggal: skrip menuliskannya ke baris tanggal itu */
+  lampiran: { tim: string; sub: string; tanggal: string; url: string; gabung?: boolean }[];
   rencana: { tim: string; uraian: string }[];
   presensi: { tanggal: string; idx: number; nilai: string[] }[];
   aplikasi: { tanggal: string; idx: number; nilai: string[] }[];
@@ -440,14 +442,17 @@ export function buildPayload(w: WeekData, token: string, oleh: string, hanyaBeru
         p.kegiatan.push({ tim: tim.id, sub: norm(sub), tanggal: norm(d), uraian: joinUraian(items) });
     });
     const lk = lampKey(tim.id, sub);
-    if (inc(`L:${lk}`) && (w.lampiran[lk] || hanyaBerubah))
-      p.lampiran.push({
-        tim: tim.id,
-        sub: norm(sub),
-        url: normalisasiLampiran(w.lampiran[lk] ?? ""),
-        // skrip menambahkan tautan ke isi sel; hanya "ganti" bila user menghapus tautan
-        gabung: !w.meta[`L:${lk}`]?.ganti,
+    // tautan dikirim PER TANGGAL: tiap tanggal ditulis ke barisnya sendiri di kolom lampiran
+    if (inc(`L:${lk}`)) {
+      const entri = parseLampiran(w.lampiran[lk] ?? "");
+      w.dates.forEach((d) => {
+        const milik = entri.filter((e) => norm(e.tanggal) === norm(d));
+        // "ganti" hanya untuk tanggal yang tautannya dihapus user; tanggal lain tetap ditambah
+        const ganti = !!w.meta[`L:${lk}|${norm(d)}`]?.ganti;
+        if (!milik.length && !ganti) return;
+        p.lampiran.push({ tim: tim.id, sub: norm(sub), tanggal: norm(d), url: susunLampiran(milik), gabung: !ganti });
       });
+    }
   });
   TIMS.forEach((t) => {
     const items = w.rencana[t.id] ?? [];
@@ -527,7 +532,7 @@ export async function kirimKeScript(url: string, payload: Payload, batasMs = 250
 }
 
 /** Versi kode Apps Script yang disalin dari aplikasi (harus sama dengan `VERSI` di skrip). */
-export const SCRIPT_VERSI = "1.5";
+export const SCRIPT_VERSI = "1.6";
 
 export type BuatTabResult = {
   ok: boolean;
@@ -618,9 +623,16 @@ export const APPS_SCRIPT = `/**
  * baru — struktur/judul/nama tim tetap, isian dikosongkan, tanggal digeser +7 hari.
  * v1.5 menulis tautan bukti dukung secara MENAMBAH (bertanda tanggal) — isi sel
  * lama tidak pernah terhapus kecuali aplikasi mengirim perintah ganti.
+ * v1.6 menulis tautan ke BARIS TANGGALNYA masing-masing (bukan menumpuk di satu
+ * sel), dan membuka sel gabungan (merge) pada kolom lampiran lebih dulu.
  */
 const TOKEN = 'GANTI-DENGAN-KODE-RAHASIA'; // samakan dengan isian di aplikasi
 const VERSI = '${SCRIPT_VERSI}';
+
+/** Rapikan teks: huruf kecil, spasi tunggal — dipakai untuk mencocokkan tanggal. */
+function rapi(s) {
+  return String(s === null || s === undefined ? '' : s).toLowerCase().replace(/\\s+/g, ' ').trim();
+}
 
 function doGet(e) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -651,9 +663,12 @@ function doPost(e) {
 
     (d.kegiatan || []).forEach(function (x) { tulis(m.A[x.tim + '|' + x.sub + '|' + x.tanggal], [k.ur], [x.uraian], 'kegiatan ' + x.tim + ' ' + x.tanggal); });
     (d.lampiran || []).forEach(function (x) {
-      const barisLamp = m.L[x.tim + '|' + x.sub];
-      if (!barisLamp) { gagal.push('lampiran ' + x.tim); return; }
-      n += tulisLampiran(sh, barisLamp, k.lamp, x.url, x.gabung !== false);
+      const kunci = x.tim + '|' + x.sub;
+      const tgl = rapi(x.tanggal || '');
+      // baris tanggalnya sendiri; kalau tanggal tidak dikirim (aplikasi lama) pakai baris pertama tim
+      const barisLamp = (tgl && m.A[kunci + '|' + tgl]) || m.L[kunci];
+      if (!barisLamp) { gagal.push('lampiran ' + x.tim + (x.tanggal ? ' ' + x.tanggal : '')); return; }
+      n += tulisLampiran(sh, barisLamp, k.lamp, x.url, x.gabung !== false, m, x.tim, x.sub);
     });
     (d.rencana || []).forEach(function (x) { tulis(m.B[x.tim], [k.bUr], [x.uraian], 'rencana ' + x.tim); });
     (d.presensi || []).forEach(function (x) { tulis(m.C[x.tanggal] || m.Cidx[x.idx], [k.cHadir, k.cTk, k.cDl, k.cCuti], x.nilai, 'presensi ' + x.tanggal); });
@@ -775,12 +790,48 @@ function petakan(sh) {
 
 /* ---------------------- tautan bukti dukung (bertanggal) ---------------------- */
 
-/** Tulis tautan ke sel lampiran: gabung = tambahkan ke isi lama (default), false = ganti. */
-function tulisLampiran(sh, row, col, teks, gabung) {
+/**
+ * Tulis tautan ke sel lampiran PADA BARIS TANGGAL ITU.
+ * gabung = tambahkan ke isi baris (default), false = ganti isi baris (user menghapus tautan).
+ * Sel gabungan (merge) dibuka lebih dulu agar tiap tanggal punya barisnya sendiri.
+ */
+function tulisLampiran(sh, row, col, teks, gabung, m, tim, sub) {
+  bukaGabungan(sh, row, col, m, tim, sub);
   const sel = sh.getRange(row, col + 1);
   const lama = String(sel.getDisplayValue() || '');
   const isi = gabung ? gabungLampiran(lama, teks) : susunLampiran(entriLampiran(teks));
+  if (isi === lama) return 0;
   return tulisBaris(sh, row, [col], [isi]);
+}
+
+/**
+ * Bila sel lampiran tergabung (merge) beberapa baris, buka gabungannya dan sebar
+ * isi lama ke baris tanggalnya masing-masing — tidak ada tautan yang hilang.
+ */
+function bukaGabungan(sh, row, col, m, tim, sub) {
+  const sel = sh.getRange(row, col + 1);
+  let g = [];
+  try { g = sel.getMergedRanges() || []; } catch (e) { g = []; }
+  if (!g.length) return false;
+  const r0 = g[0];
+  const tinggi = r0.getNumRows ? r0.getNumRows() : 1;
+  if (tinggi < 2 || (r0.getNumColumns && r0.getNumColumns() > 1)) return false;
+  const atas = r0.getRow();
+  const isi = String(sh.getRange(atas, col + 1).getDisplayValue() || '');
+  r0.breakApart();
+  if (!isi.trim()) return true;
+  const pindah = {}, sisa = [];
+  entriLampiran(isi).forEach(function (e) {
+    const baris = e.tanggal && m && tim !== undefined ? m.A[tim + '|' + (sub || '') + '|' + rapi(e.tanggal)] : 0;
+    if (baris && baris >= atas && baris < atas + tinggi) (pindah[baris] = pindah[baris] || []).push(e);
+    else sisa.push(e);
+  });
+  sh.getRange(atas, col + 1).setValue(susunLampiran(sisa));
+  Object.keys(pindah).forEach(function (b) {
+    const lamaBaris = String(sh.getRange(Number(b), col + 1).getDisplayValue() || '');
+    sh.getRange(Number(b), col + 1).setValue(gabungLampiran(lamaBaris, susunLampiran(pindah[b])));
+  });
+  return true;
 }
 
 /** Pecah isi sel lampiran menjadi entri { tanggal, url }. */

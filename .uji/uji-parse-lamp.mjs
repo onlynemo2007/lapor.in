@@ -34,6 +34,25 @@ cek("penanda tanggal utuh", lamp.includes("2 November 2026") && lamp.includes("3
 cek("uraian tetap di barisnya", (w.kegiatan["humas||2 november 2026"] ?? []).join(" ") === "Satu butir", JSON.stringify(w.kegiatan));
 cek("tanggal minggu utuh", w.dates.length === 2, JSON.stringify(w.dates));
 
+/* tautan per baris tanggal (format v1.6): terbaca sebagai satu daftar per tim */
+const csv2 = [
+  "LAPORAN MINGGU I BULAN NOVEMBER 2026,,,,,,,,",
+  ",,A,KEGIATAN TIM,,,,,,",
+  "No,,Tim,Tanggal,Uraian,,,,,Link Bukti Dukung",
+  `,,Humas,2 November 2026,"Satu butir",,,,,2 November 2026: ${A}`,
+  `,,,3 November 2026,"Dua butir",,,,,3 November 2026: ${B}`,
+  ",,B,RENCANA KEGIATAN TIM,,,,,,",
+  "No,,Tim,Uraian,,,,,,",
+  ",,Humas,,,,,,,",
+  ",,C,REKAPITULASI KEHADIRAN,,,,,,",
+  "No,,Tanggal,Kehadiran,Tidak Masuk,Dinas Luar,Cuti,,,",
+  ",,2 November 2026,,,,,,",
+].join("\n");
+const w2 = parseWeek(csv2, "1", "Nov I");
+const lamp2 = w2.lampiran["humas|"] ?? "";
+cek("tautan dua baris tanggal terbaca semua", lamp2.includes(A) && lamp2.includes(B), lamp2);
+cek("baris tanggal 2 & 3 dikenali", w2.rows.A["humas||2 november 2026"] === 4 && w2.rows.A["humas||3 november 2026"] === 5, JSON.stringify(w2.rows.A));
+
 const lulus = hasil.filter((h) => h.lulus).length;
 console.log(`\n${lulus}/${hasil.length} uji parse lulus`);
 process.exit(lulus === hasil.length ? 0 : 1);

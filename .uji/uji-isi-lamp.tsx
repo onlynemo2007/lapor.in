@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { ToastProvider } from "../src/components/ui";
 import { AppProvider, useApp } from "../src/lib/store";
 import IsiView from "../src/views/IsiView";
+import { buildPayload } from "../src/lib/sheet";
 
 const CSV = [
   "LAPORAN MINGGU I BULAN NOVEMBER 2025,,,,,,,,",
@@ -97,7 +98,8 @@ async function main() {
 
   const isi3 = c().week!.lampiran["humas|"] ?? "";
   cek("tersimpan dengan tanggal 3 November", isi3 === "3 November 2025: https://drive.google.com/file/d/AAA/view", isi3);
-  cek("tidak ada tanda 'ganti'", c().week!.meta["L:humas|"]?.ganti === false, String(c().week!.meta["L:humas|"]?.ganti));
+  const k3 = "L:humas||3 november 2025";
+  cek("tidak ada tanda 'ganti'", c().week!.meta[k3]?.ganti === false, String(c().week!.meta[k3]?.ganti));
 
   /* --- pindah ke tanggal 4: tambah tautan lain --- */
   await klik(tombolMemuat("4 Nov"));
@@ -124,7 +126,16 @@ async function main() {
   const isi5 = c().week!.lampiran["humas|"] ?? "";
   cek("tautan tanggal 3 hilang karena dihapus", !isi5.includes("AAA"), isi5);
   cek("tautan tanggal 4 tetap", isi5.includes("BBB"), isi5);
-  cek("tanda 'ganti' aktif setelah hapus", c().week!.meta["L:humas|"]?.ganti === true, String(c().week!.meta["L:humas|"]?.ganti));
+  cek("tanda 'ganti' aktif setelah hapus", c().week!.meta[k3]?.ganti === true, String(c().week!.meta[k3]?.ganti));
+  const k4 = "L:humas||4 november 2025";
+  cek("tanggal 4 tidak ikut ditandai 'ganti'", c().week!.meta[k4]?.ganti === false, String(c().week!.meta[k4]?.ganti));
+
+  /* payload: satu entri per tanggal, tanggal 3 berganti, tanggal 4 menambah */
+  const p = buildPayload(c().week!, "tok", "Uji", false);
+  const l3 = p.lampiran.find((x) => x.tanggal === "3 november 2025");
+  const l4 = p.lampiran.find((x) => x.tanggal === "4 november 2025");
+  cek("payload tanggal 3 dikirim sebagai ganti", !!l3 && l3.gabung === false && l3.url === "", JSON.stringify(l3));
+  cek("payload tanggal 4 tetap menambah", !!l4 && l4.gabung === true && l4.url.includes("BBB"), JSON.stringify(l4));
 
   const lulus = hasil.filter((h) => h.lulus).length;
   hasil.filter((h) => !h.lulus).forEach((h) => console.log("  GAGAL:", h.nama, "→", h.info));

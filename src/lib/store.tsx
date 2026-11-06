@@ -9,8 +9,8 @@ import {
   slotKey,
   lampKey,
   norm,
+  lampiranPerTanggal,
   normalisasiLampiran,
-  parseLampiran,
   samaLampiran,
   SLOT_ROWS,
   TIMS,
@@ -707,15 +707,27 @@ export function setLampiran(w: WeekData, k: string, url: string, oleh: string): 
 
   // Bila ada tautan lama yang hilang, itu karena user menekan hapus.
   // Selain itu skrip hanya menambah, jadi isi sel tidak pernah tertimpa.
-  const lama = parseLampiran(w.lampiran[k] ?? "").map((e) => e.url.toLowerCase());
-  const baru = parseLampiran(isi).map((e) => e.url.toLowerCase());
-  const ganti = lama.some((u) => !baru.includes(u));
+  // Penanda "ganti" disimpan PER TANGGAL: tiap tanggal punya barisnya sendiri di sheet,
+  // jadi menghapus tautan tanggal 3 tidak menyentuh baris tanggal lain.
+  const lama = lampiranPerTanggal(w.lampiran[k] ?? "");
+  const baru = lampiranPerTanggal(isi);
+  const at = Date.now();
+  const meta = { ...w.meta };
+  const semuaTanggal = new Set([...Object.keys(lama), ...Object.keys(baru)]);
+  semuaTanggal.forEach((t) => {
+    const l = lama[t] ?? [];
+    const b = baru[t] ?? [];
+    const ganti = l.some((u) => !b.includes(u));
+    meta[`L:${k}|${t}`] = { oleh, at, ganti };
+  });
+  // penanda ringkas untuk status "belum terkirim" (dipakai mesin sinkron)
+  meta[`L:${k}`] = { oleh, at, ganti: false };
 
   return {
     ...w,
     lampiran,
     dirty: { ...w.dirty, [`L:${k}`]: true },
-    meta: { ...w.meta, [`L:${k}`]: { oleh, at: Date.now(), ganti } },
+    meta,
   };
 }
 

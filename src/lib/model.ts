@@ -379,6 +379,16 @@ export const lampiranTanggal = (raw: string, tanggal: string) =>
     .map((e) => e.url);
 
 /** Ganti tautan satu tanggal saja — entri tanggal lain tidak disentuh. */
+/** Kelompokkan tautan per tanggal (kunci = tanggal huruf kecil; "" = tautan tanpa tanggal). */
+export function lampiranPerTanggal(raw: string): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  parseLampiran(raw).forEach((e) => {
+    const k = e.tanggal ? norm(e.tanggal) : "";
+    (out[k] ??= []).push(e.url);
+  });
+  return out;
+}
+
 export function gantiLampiranTanggal(raw: string, tanggal: string, urls: string[]): string {
   const tgl = cleanDate(tanggal);
   const lain = parseLampiran(raw).filter((e) => norm(e.tanggal) !== norm(tgl));

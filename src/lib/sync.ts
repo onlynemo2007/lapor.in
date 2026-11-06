@@ -75,10 +75,20 @@ export function siapkanKiriman(w: WeekData, token: string, nama: string): Kirima
  */
 export function tandaiTerkirim(w: WeekData, k: Kiriman, at: number): WeekData {
   const dirty = { ...w.dirty };
+  const meta = { ...w.meta };
   k.dirty.forEach((dk) => {
-    if ((w.meta[dk]?.at ?? 0) === k.stamp[dk]) delete dirty[dk];
+    if ((w.meta[dk]?.at ?? 0) !== k.stamp[dk]) return;
+    delete dirty[dk];
+    // "ganti" hanya sekali pakai: setelah baris itu terkirim, skrip kembali hanya menambah,
+    // sehingga tautan yang ditambahkan orang lain langsung di sheet tidak ikut terhapus.
+    if (dk.startsWith("L:")) {
+      const awalan = `L:${dk.slice(2)}|`;
+      Object.keys(meta).forEach((mk) => {
+        if (mk.startsWith(awalan) && meta[mk].ganti) meta[mk] = { ...meta[mk], ganti: false };
+      });
+    }
   });
-  return { ...w, dirty, syncedAt: at };
+  return { ...w, dirty, meta, syncedAt: at };
 }
 
 export const jamSinkron = (at?: number) =>

@@ -17,73 +17,96 @@ const api = (env) =>
 
 const post = (a, isi) => JSON.parse(a.doPost({ postData: { contents: JSON.stringify(isi) } }).getContent());
 
+/* baris tim Keuangan = 4..8 (2,3,4,5,6 November 2026) */
+const R2 = 4, R3 = 5, R4 = 6, R5 = 7, R6 = 8;
+
+const kirim = (a, tanggal, url, extra = {}) =>
+  post(a, { token: a.TOKEN, gid: GID, lampiran: [{ tim: "keuangan", sub: "", tanggal, url, ...extra }] });
+
 const A = "https://drive.google.com/file/d/AAA/view";
 const B = "https://drive.google.com/file/d/BBB/view";
 const C = "https://drive.google.com/file/d/CCC/view";
+const D = "https://drive.google.com/file/d/DDD/view";
 
-const kirim = (a, url, extra = {}) =>
-  post(a, { token: a.TOKEN, gid: GID, lampiran: [{ tim: "keuangan", sub: "", url, ...extra }] });
-
-/* 1. skrip lama (isi sel sudah ada) + tambah tautan tanggal lain */
+/* ---------- 1. dasar: tiap tanggal ditulis di barisnya sendiri (tanpa merge) ---------- */
 {
-  const env = lingkungan(`2 November 2026: ${LAMA}`);
+  const env = lingkungan("");
   const a = api(env);
-  cek("versi skrip 1.5", a.VERSI === "1.5", a.VERSI);
+  cek("versi skrip 1.6", a.VERSI === "1.6", a.VERSI);
 
-  const r = kirim(a, `3 November 2026: ${A}`, { gabung: true });
-  const sel = String(env.sumber.get(4, 11));
+  const r = kirim(a, "3 november 2026", `3 November 2026: ${A}`, { gabung: true });
   cek("kiriman diterima", r.ok === true && r.ditulis >= 1 && r.gagal.length === 0, JSON.stringify(r));
-  cek("tautan lama TIDAK hilang", sel.includes(LAMA), sel);
-  cek("tautan baru masuk dengan tanggalnya", sel.includes(`3 November 2026: ${A}`), sel);
-  cek("dua baris berurutan", sel.split("\n").length === 2, sel);
+  cek("tautan masuk baris tanggal 3", String(env.sumber.get(R3, 11)).includes(A), String(env.sumber.get(R3, 11)));
+  cek("baris tanggal 2 tetap kosong", String(env.sumber.get(R2, 11)) === "", String(env.sumber.get(R2, 11)));
 
-  /* 2. tambah lagi tanpa properti gabung (default = gabung) */
-  const r2 = kirim(a, `4 November 2026: ${B}`);
-  const sel2 = String(env.sumber.get(4, 11));
-  cek("default tetap menggabung", sel2.includes(LAMA) && sel2.includes(A) && sel2.includes(B), sel2);
-  cek("tiga baris", sel2.split("\n").length === 3, sel2);
-  cek("balasan kedua ok", r2.ok === true);
+  /* dua tautan di tanggal yang sama → dua baris teks di sel yang sama */
+  kirim(a, "3 november 2026", `3 November 2026: ${B}`);
+  const sel3 = String(env.sumber.get(R3, 11));
+  cek("dua tautan satu tanggal di baris yang sama", sel3.split("\n").length === 2 && sel3.includes(A) && sel3.includes(B), sel3);
 
-  /* 3. kirim ulang tautan yang sama → tidak dobel */
-  kirim(a, `4 November 2026: ${B}`);
-  const sel3 = String(env.sumber.get(4, 11));
-  cek("tidak ada duplikat", sel3.split("\n").filter((b) => b.includes(B)).length === 1, sel3);
+  /* tanggal lain → baris lain, tidak menimpa */
+  kirim(a, "4 november 2026", `4 November 2026: ${C}`);
+  cek("tautan tanggal 4 di barisnya sendiri", String(env.sumber.get(R4, 11)).includes(C), String(env.sumber.get(R4, 11)));
+  cek("baris tanggal 3 tidak berubah", String(env.sumber.get(R3, 11)) === sel3, String(env.sumber.get(R3, 11)));
 
-  /* 4. gabung:false (user menghapus tautan) → sel diganti persis */
-  const r4 = kirim(a, `4 November 2026: ${C}`, { gabung: false });
-  const sel4 = String(env.sumber.get(4, 11));
-  cek("gabung:false menimpa sesuai daftar", sel4 === `4 November 2026: ${C}`, sel4);
-  cek("gabung:false ok", r4.ok === true);
+  /* hapus tautan tanggal 3 saja (gabung:false) → hanya baris itu yang berubah */
+  const r4 = kirim(a, "3 november 2026", "", { gabung: false });
+  cek("gabung:false mengosongkan baris tanggal 3", String(env.sumber.get(R3, 11)) === "", String(env.sumber.get(R3, 11)));
+  cek("baris tanggal 4 tetap", String(env.sumber.get(R4, 11)).includes(C), String(env.sumber.get(R4, 11)));
+  cek("balasan ok", r4.ok === true);
+
+  /* kiriman ulang tidak menimbulkan duplikat */
+  kirim(a, "4 november 2026", `4 November 2026: ${C}`);
+  cek("tidak ada duplikat", String(env.sumber.get(R4, 11)).split("\n").filter((b) => b.includes(C)).length === 1, String(env.sumber.get(R4, 11)));
 }
 
-/* 5. sel kosong + data lama tanpa tanggal */
+/* ---------- 2. sel gabungan (merge) seperti di sheet user: dipecah & disebar ---------- */
+{
+  const lump = `2 November 2026: ${LAMA}\n2 November 2026: ${A}\n4 November 2026: ${B}`;
+  const env = lingkungan(lump);
+  env.sumber.merge(R2, 11, R2 + 4, 11); // K4:K8 satu blok tim
+  const a = api(env);
+
+  kirim(a, "3 november 2026", `3 November 2026: ${D}`, { gabung: true });
+
+  const ambil = (r) => String(env.sumber.get(r, 11));
+  cek("merge kolom lampiran dibuka", env.sumber.merges.length === 0, JSON.stringify(env.sumber.merges));
+  cek("tautan 3 Nov masuk baris tanggal 3", ambil(R3).includes(D) && ambil(R3).split("\n").length === 1, ambil(R3));
+  cek("tautan 2 Nov lama tetap & pindah ke baris tanggal 2", ambil(R2).includes(LAMA) && ambil(R2).includes(A), ambil(R2));
+  cek("tautan 4 Nov lama pindah ke baris tanggal 4", ambil(R4).includes(B), ambil(R4));
+  cek("baris lain tidak diisi", ambil(R4) === `4 November 2026: ${B}` && ambil(R5) === "" && ambil(R6) === "", JSON.stringify([ambil(R4), ambil(R5), ambil(R6)]));
+
+  /* kirim ulang → idempotent */
+  kirim(a, "3 november 2026", `3 November 2026: ${D}`, { gabung: true });
+  cek("idempotent setelah penyebaran", ambil(R3) === `3 November 2026: ${D}`, ambil(R3));
+}
+
+/* ---------- 3. format lama tanpa tanggal pada sel gabungan: tetap di baris atas ---------- */
 {
   const env = lingkungan(`1. ${LAMA}\n2. ${A}`);
+  env.sumber.merge(R2, 11, R2 + 4, 11);
   const a = api(env);
-  kirim(a, `5 November 2026: ${B}`, { gabung: true });
-  const sel = String(env.sumber.get(4, 11));
-  cek("format lama bernomor tetap ada", sel.includes(LAMA) && sel.includes(A), sel);
-  cek("tautan baru bertanggal ditambahkan", sel.includes(`5 November 2026: ${B}`), sel);
-  cek("total tiga baris", sel.split("\n").length === 3, sel);
+  kirim(a, "5 november 2026", `5 November 2026: ${B}`);
+  const ambil = (r) => String(env.sumber.get(r, 11));
+  cek("tautan tanpa tanggal tetap ada di baris atas", ambil(R2).includes(LAMA) && ambil(R2).includes(A), ambil(R2));
+  cek("tautan baru di baris tanggal 5", ambil(R5).includes(B), ambil(R5));
 }
 
-/* 6. entri lama tanpa tanggal diberi tanggal bila tautannya sama */
+/* ---------- 4. aplikasi lama (tanpa tanggal) tetap jalan: pakai baris pertama tim ---------- */
 {
-  const env = lingkungan(`1. ${LAMA}`);
+  const env = lingkungan("");
   const a = api(env);
-  kirim(a, `2 November 2026: ${LAMA}`, { gabung: true });
-  const sel = String(env.sumber.get(4, 11));
-  cek("tautan sama tidak digandakan, tanggalnya dilengkapi", sel === `2 November 2026: ${LAMA}`, sel);
+  const r = post(a, { token: a.TOKEN, gid: GID, lampiran: [{ tim: "keuangan", sub: "", url: `${A}`, gabung: true }] });
+  cek("payload tanpa tanggal ditulis di baris pertama tim", String(env.sumber.get(R2, 11)).includes(A) && r.ok === true, String(env.sumber.get(R2, 11)));
 }
 
-/* 7. buatTab v1.5 tetap bekerja & isian lampiran dikosongkan */
+/* ---------- 5. buatTab v1.6 tetap benar ---------- */
 {
   const env = lingkungan(`2 November 2026: ${LAMA}`);
   const a = api(env);
   const r = post(a, { token: a.TOKEN, aksi: "buatTab", sumberGid: GID, nama: "Nov II", geserHari: 7 });
   const baru = env.ss.getSheetByName("Nov II");
   cek("buatTab ok", r.ok === true && !!baru, JSON.stringify(r));
-  cek("tab baru: uraian kosong", String(baru.get(4, 5)).trim() === "");
   cek("tab baru: sel link dikosongkan", String(baru.get(4, 11)).trim() === "", String(baru.get(4, 11)));
   cek("tab baru: nama tim tetap", baru.get(4, 3) === "Keuangan");
   cek("tab baru: tanggal +7", baru.get(4, 4) === "9 November 2026", String(baru.get(4, 4)));

@@ -48,6 +48,12 @@ cek("samaLampiran beda tanggal → beda", !M.samaLampiran(`2 November 2026: ${A}
 cek("normalisasiLampiran menata ulang", M.normalisasiLampiran(`1. ${A}\n2. ${B}`) === `${A}\n${B}`);
 cek("normalisasiLampiran pertahankan teks bukan tautan", M.normalisasiLampiran("lihat folder drive") === "lihat folder drive");
 
+/* kelompok per tanggal */
+const per = M.lampiranPerTanggal(isi);
+cek("kelompok per tanggal", per["2 november 2026"]?.length === 1 && per["3 november 2026"]?.[0] === B, JSON.stringify(per));
+const per2 = M.lampiranPerTanggal(`1. ${A}`);
+cek("kelompok tanpa tanggal pakai kunci kosong", per2[""]?.[0] === A, JSON.stringify(per2));
+
 /* huruf kolom */
 cek("huruf kolom 9 = J, 10 = K", M.hurufKolom(9) === "J" && M.hurufKolom(10) === "K" && M.hurufKolom(26) === "AA", M.hurufKolom(26));
 

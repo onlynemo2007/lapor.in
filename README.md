@@ -17,17 +17,20 @@ menyalin blok, tidak perlu menekan tombol “Kirim”.
 
 ### Link bukti data dukung (lampiran)
 
-Satu sel lampiran per tim/per minggu memuat **tautan dari semua tanggal**, masing-masing dengan penandanya:
+Tautan bukti dukung ditulis **pada baris tanggalnya masing-masing** di kolom lampiran (J/K):
 
-```
-2 November 2026: https://drive.google.com/…AAA/view
-3 November 2026: https://drive.google.com/…BBB/view
-```
+| Baris | Tanggal | Kolom lampiran |
+|---|---|---|
+| 44 | 2 November 2026 | `2 November 2026: https://…AAA/view` |
+| 45 | 3 November 2026 | `3 November 2026: https://…BBB/view` |
+| 46 | 4 November 2026 | `4 November 2026: https://…CCC/view` |
 
-- Tautan **tanggal berbeda hidup berdampingan** dalam satu sel; tidak ada yang saling menimpa.
-- Menambah tautan **tidak pernah menghapus** tautan lain: skrip membaca isi sel lebih dulu, baru menambahkan.
-  Tautan hanya hilang bila Anda menekan tombol hapus di daftar (aplikasi mengirim `gabung:false`).
-- Bila satu tanggal punya beberapa tautan, semuanya ditulis dengan tanggal yang sama (urut sesuai daftar).
+- Tanggal berbeda → **baris berbeda**; tidak ada yang ditumpuk jadi satu sel dan tidak ada yang saling menimpa.
+- Dua tautan (atau lebih) untuk tanggal yang sama ditulis sebagai dua baris teks **di sel tanggal itu**.
+- Sel lampiran yang tadinya **digabung (merge)** antar tanggal dibuka otomatis, lalu tautan lama disebar ke
+  baris tanggalnya sesuai penanda tanggal — tidak ada tautan yang hilang, dan format sheet lain tidak disentuh.
+- Menambah tautan **tidak pernah menghapus** tautan lain: skrip membaca isi baris lebih dulu, baru menambahkan.
+  Satu tanggal hanya diganti bila Anda menekan tombol hapus untuk tanggal itu (aplikasi mengirim `gabung:false`).
 - Format lama (bernomor `1. … 2. …`, atau tautan tanpa tanggal) tetap dikenali dan dipertahankan; tautan yang
   sama tidak digandakan, hanya dilengkapi tanggalnya bila masih kosong.
 - Menempel beberapa tautan sekaligus (baris baru, spasi, atau koma) langsung dipecah dan dirapikan.
@@ -39,7 +42,7 @@ di spreadsheet tanpa membuka Google Sheets:
 
 - **Struktur disalin** dari tab yang dipilih: judul bagian, judul kolom, nama tim, format, lebar kolom,
   rumus, dan tabel realisasi anggaran — jadi tampilannya identik dengan minggu sebelumnya.
-- **Isian dikosongkan**: uraian kegiatan (A), rencana (B), tautan bukti dukung (J), angka kehadiran (C),
+- **Isian dikosongkan**: uraian kegiatan (A), rencana (B), tautan bukti dukung (J/K), angka kehadiran (C),
   serta angka aplikasi presensi. Baris, tim, dan judul tidak dihapus.
 - **Tanggal digeser +7 hari** (kolom Tanggal bagian A/C/P dan rentang tanggal di baris judul) sehingga
   tab baru langsung berisi tanggal minggu berikutnya. Pilihan “Biarkan sama” mempertahankan tanggal lama.
@@ -47,7 +50,7 @@ di spreadsheet tanpa membuka Google Sheets:
 - Tab baru diletakkan tepat di samping tab sumber; tab lain tidak disentuh. Setelah dibuat, aplikasi
   otomatis pindah ke tab itu dan isian berikutnya langsung masuk ke tab baru.
 
-Fitur ini memakai aksi `buatTab` pada Apps Script **v1.5**. Bila skrip di spreadsheet masih versi lama,
+Fitur ini memakai aksi `buatTab` pada Apps Script **v1.6**. Bila skrip di spreadsheet masih versi lama,
 aplikasi menampilkan peringatan: salin ulang kode dari menu Sinkronisasi, lalu
 **Terapkan → Kelola deployment → Edit → Versi baru** (URL `/exec` tidak berubah).
 

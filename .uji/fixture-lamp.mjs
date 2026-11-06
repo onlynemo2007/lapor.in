@@ -38,6 +38,22 @@ const kolomAngka = (h) => [...h].reduce((n, c) => n * 26 + (c.charCodeAt(0) - 64
 
 class R {
   constructor(sh, r, c, nr = 1, nc = 1) { this.sh = sh; this.r = r; this.c = c; this.nr = nr; this.nc = nc; }
+  getRow() { return this.r; }
+  getColumn() { return this.c; }
+  getNumRows() { return this.nr; }
+  getNumColumns() { return this.nc; }
+  /** gabungan (merge) yang memuat sel ini */
+  getMergedRanges() {
+    return this.sh.merges
+      .filter((m) => this.r >= m.r1 && this.r <= m.r2 && this.c >= m.c1 && this.c <= m.c2)
+      .map((m) => this.sh.getRange(m.r1, m.c1, m.r2 - m.r1 + 1, m.c2 - m.c1 + 1));
+  }
+  /** lepas gabungan; isi tetap di sel kiri-atas */
+  breakApart() {
+    const sh = this.sh;
+    sh.merges = sh.merges.filter((m) => !(this.r <= m.r1 && this.c <= m.c1 && this.r + this.nr - 1 >= m.r2 && this.c + this.nc - 1 >= m.c2));
+    return this;
+  }
   getValue() { return this.sh.get(this.r, this.c); }
   getDisplayValue() { return display(this.sh.get(this.r, this.c)); }
   setValue(v) { this.sh.set(this.r, this.c, v); return this; }
@@ -48,7 +64,8 @@ class R {
 }
 
 export class Sheet {
-  constructor(ss, name, g) { this.ss = ss; this.name = name; this.grid = g.map((r) => [...r]); this.id = ++urut; this.hidden = false; }
+  constructor(ss, name, g) { this.ss = ss; this.name = name; this.grid = g.map((r) => [...r]); this.id = ++urut; this.hidden = false; this.merges = []; }
+  merge(r1, c1, r2, c2) { this.merges.push({ r1, c1, r2, c2 }); return this; }
   getName() { return this.name; }
   getSheetId() { return this.id; }
   isSheetHidden() { return this.hidden; }
