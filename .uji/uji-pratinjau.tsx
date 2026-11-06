@@ -25,6 +25,19 @@ const CSV = [
   "No,Kode,Uraian,Pagu,Realisasi,,,,",
   "1,032.12.01,Perjalanan dinas,100000000,25000000,,,,",
   ",,Total,100000000,25000000,,,,",
+  ",,,,,,,,,",
+  "Rekapitulasi UP,,,,,,,,,",
+  "No,Uraian,Pagu,Realisasi,Sisa,,,,,",
+  "1,UP Januari,100000000,20000000,80000000,,,,,",
+  "2,UP Februari,50000000,10000000,40000000,,,,,",
+  ",,,,,,,,,",
+  "Pembayaran Melalui LS,,,,,,,,,",
+  "No,Uraian,Nilai,Keterangan,,,,,,",
+  "1,Honor narasumber,15000000,Lunas,,,,,,",
+  ",,,,,,,,,",
+  "Rencana Penarikan,,,,,,,,,",
+  "Bulan,Jumlah,Keterangan,,,,,,",
+  "November,75000000,,,,,,,,",
 ].join("\n");
 
 let aktif: ReturnType<typeof useApp> | null = null;
@@ -82,6 +95,13 @@ async function main() {
   cek("tautan tanggal 3 tidak menumpang di baris tanggal 4", !!r4 && !(r4.textContent ?? "").includes("AAA"), r4?.textContent);
   cek("tautan tanggal 4 di baris tanggal 4", !!r4 && (r4.textContent ?? "").includes("4 November 2025"), r4?.textContent);
 
+  const teksD = document.body.textContent ?? "";
+  cek("tabel Rekapitulasi UP tercetak", teksD.includes("Rekapitulasi UP") && teksD.includes("UP Februari"), teksD.slice(-400));
+  cek("tabel Pembayaran Melalui LS tercetak", teksD.includes("Pembayaran Melalui LS") && teksD.includes("Honor narasumber"));
+  cek("tabel Rencana Penarikan tercetak", teksD.includes("Rencana Penarikan") && teksD.includes("November"));
+  cek("angka tabel diformat seperti sheet", teksD.includes("80.000.000") && teksD.includes("15.000.000"), "");
+  cek("teks sel apa adanya", teksD.includes("Lunas"), "");
+  cek("total kode tetap tercetak", teksD.includes("25.000.000"), "");
   cek("bagian D ikut tercetak", /D\. Realisasi Keuangan/.test(document.body.textContent ?? "") && (document.body.textContent ?? "").includes("032.12.01"), "");
 
   /* tombol ambil data terbaru memicu pembacaan lagi */

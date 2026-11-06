@@ -29,6 +29,16 @@ const rp = w.tabelKeuangan.find((t) => t.judul === "Rencana Penarikan");
 cek("kolom Rencana Penarikan", rp.kolom.map((k) => k.label).join("|") === "Bulan|Jumlah|Keterangan", JSON.stringify(rp?.kolom));
 cek("label baris + kolom label", rp.baris[0].label === "November" && rp.baris[0].labelKolom === 0, JSON.stringify(rp.baris[0]));
 
+/* ---------------- penanda & judul kolom yang berbeda ---------------- */
+{
+  const v = parseWeek(csv().replace(",D,REALISASI KEUANGAN", ",D.,Realisasi Keuangan"), "1", "Nov I");
+  cek("penanda bagian 'D.' dikenali", v.tabelKeuangan.length === 3 && v.anggaran.length === 2, JSON.stringify([v.tabelKeuangan.length, v.anggaran.length]));
+}
+{
+  const v = parseWeek(csv().replace("Kode,Uraian,Pagu,Realisasi", "Kode Rekening,Uraian,Pagu,Realisasi"), "1", "Nov I");
+  cek("judul 'Kode Rekening' dikenali", v.anggaran.length === 2 && v.anggaran[0].kode === "032.12.01", JSON.stringify(v.anggaran));
+}
+
 /* ---------------- payload ---------------- */
 const w2 = setSelKeuangan(w, 6, 3, "12000000", "Uji");
 const p = buildPayload(w2, "tok", "Uji", true);

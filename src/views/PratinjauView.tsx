@@ -1,12 +1,37 @@
 import { useEffect } from "react";
 import { useApp } from "../lib/store";
-import { TIMS, TOTAL_PEGAWAI, joinUraian, lampKey, lampiranTanggal, norm, rupiah, serapan, slotKey, totalAnggaran } from "../lib/model";
+import {
+  TIMS,
+  TOTAL_PEGAWAI,
+  joinUraian,
+  lampKey,
+  lampiranTanggal,
+  norm,
+  parseAngka,
+  rupiah,
+  selKey,
+  serapan,
+  slotKey,
+  totalAnggaran,
+} from "../lib/model";
 import { presensiCells } from "../lib/sheet";
 import { jamSinkron } from "../lib/sync";
 import { Btn, I } from "../components/ui";
 import { StateGate } from "./common";
 
 const th = "border border-[#9a9a95] bg-[#f1f1ee] px-2 py-1.5 text-left text-[11.5px] font-bold print:bg-[#eee]";
+
+/** Angka di sel ditampilkan seperti di sheet (100.000.000), teks apa adanya. */
+function tampilSel(v: string) {
+  const t = (v ?? "").trim();
+  if (!t) return "";
+  if (/^-?[\d.,]+$/.test(t) && /\d/.test(t)) {
+    const n = parseAngka(t);
+    if (Number.isFinite(n)) return n.toLocaleString("id-ID");
+  }
+  return t;
+}
+const angkaSaja = (v: string) => /^-?[\d.,]*\d[\d.,]*$/.test((v ?? "").trim());
 const td = "border border-[#9a9a95] px-2 py-1.5 align-top text-[12px] leading-snug";
 
 export default function PratinjauView() {
@@ -200,10 +225,14 @@ export default function PratinjauView() {
           </tbody>
         </table>
 
-        {/* D — realisasi keuangan */}
-        {week.anggaran.length > 0 && (
+        {/* D — realisasi keuangan: persis seperti isi sheet (tabel per kode + tabel keuangan lain) */}
+        {(week.anggaran.length > 0 || week.tabelKeuangan.length > 0) && (
           <>
             <h2 className="mt-7 text-[13px] font-bold">D. Realisasi Keuangan</h2>
+            {week.anggaran.length > 0 && week.tabelKeuangan.length > 0 && (
+              <p className="mt-2 text-[11.5px] font-semibold">Realisasi anggaran per kode kegiatan</p>
+            )}
+            {week.anggaran.length > 0 && (
             <div className="mt-2 overflow-x-auto">
               <table className="w-full min-w-[560px] border-collapse">
                 <thead>
@@ -243,6 +272,43 @@ export default function PratinjauView() {
                 </tbody>
               </table>
             </div>
+            )}
+
+            {week.tabelKeuangan.map((t) => (
+              <div key={`${t.judul}-${t.header}`} className="mt-4">
+                <p className="text-[12px] font-bold">{t.judul}</p>
+                <div className="mt-1.5 overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr>
+                        {t.kolom.map((k) => (
+                          <th key={k.index} className={th}>
+                            {k.label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {t.baris.map((r) => (
+                        <tr key={r.nomor}>
+                          {t.kolom.map((k) => {
+                            const isi = week.selKeuangan[selKey(r.nomor, k.index)] ?? r.sel[k.index] ?? "";
+                            return (
+                              <td
+                                key={k.index}
+                                className={`${td} ${angkaSaja(isi) ? "whitespace-nowrap text-right" : ""}`}
+                              >
+                                {tampilSel(isi)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
           </>
         )}
 

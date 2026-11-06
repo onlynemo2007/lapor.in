@@ -203,8 +203,10 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
 
     // penanda bagian: "A" | "B" | "C" | "D" diikuti judul
     for (let j = 0; j < 4; j++) {
-      if (["A", "B", "C", "D"].includes(cell(j)) && cell(j + 1)) {
-        sec = cell(j);
+      // penanda bagian boleh "D", "d.", "D." — apa pun yang dipakai di sheet
+      const penanda = cell(j).replace(/[^A-Za-z]/g, "").toUpperCase();
+      if (["A", "B", "C", "D"].includes(penanda) && cell(j + 1)) {
+        sec = penanda;
         if (sec === "A") w.judulKegiatan = cell(j + 1);
         if (sec === "B") w.judulRencana = cell(j + 1);
         if (sec === "C") w.judulPresensi = cell(j + 1);
@@ -214,7 +216,7 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
       }
     }
     if (r.some((x) => /^Rekapitulasi Penggunaan Aplikasi Presensi/i.test(x.trim()))) return void (sec = "P");
-    if (r.some((x) => /^Realisasi (Anggaran|Keuangan)/i.test(x.trim()))) return void (sec = "R");
+    if (r.some((x) => /\brealisasi (anggaran|keuangan)/i.test(x))) return void (sec = "R");
 
     /* ---- baris judul kolom ---- */
     if (sec === "A") {
@@ -264,8 +266,8 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
       }
     }
     if (sec === "R" || sec === "D") {
-      const k = has(r, (x) => x === "kode"), p = has(r, (x) => x === "pagu");
-      const u = has(r, (x) => x.startsWith("uraian")), re = has(r, (x) => x === "realisasi");
+      const k = has(r, (x) => x.startsWith("kode")), p = has(r, (x) => x.startsWith("pagu"));
+      const u = has(r, (x) => x.startsWith("uraian")), re = has(r, (x) => x.startsWith("realisasi"));
       if (k >= 0 && p >= 0) {
         Object.assign(c, { rKode: k, rPagu: p, rUr: u >= 0 ? u : k + 1, rReal: re >= 0 ? re : p + 1 });
         keuHeader = true;
@@ -966,8 +968,8 @@ function petakan(sh) {
       const T = cell(c.bTim);
       if (T && n(T) !== 'tim') m.B[timDari(T)] = row;
     } else if (sec === 'R' || sec === 'D') {
-      const k = cari(r, x => x === 'kode'), p = cari(r, x => x === 'pagu');
-      const u = cari(r, x => x.indexOf('uraian') === 0), re = cari(r, x => x === 'realisasi');
+      const k = cari(r, x => x.indexOf('kode') === 0), p = cari(r, x => x.indexOf('pagu') === 0);
+      const u = cari(r, x => x.indexOf('uraian') === 0), re = cari(r, x => x.indexOf('realisasi') === 0);
       if (k >= 0 && p >= 0) {
         c.rKode = k; c.rPagu = p; c.rUr = u >= 0 ? u : k + 1; c.rReal = re >= 0 ? re : p + 1;
         m.rAda = true;
