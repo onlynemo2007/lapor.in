@@ -123,7 +123,8 @@ export type TabelKeuangan = {
   judul: string;
   /** nomor baris judul kolom (1-based) */
   header: number;
-  kolom: { index: number; label: string }[];
+  /** `kelompok` diisi bila judul kolom ditulis dua baris (mis. “Presensi Menggunakan Aplikasi” → Sikepo/Epresensi/Finger Print) */
+  kolom: { index: number; label: string; kelompok?: string }[];
   baris: BarisKeuangan[];
 };
 

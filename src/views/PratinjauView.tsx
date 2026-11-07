@@ -35,6 +35,16 @@ function tampilSel(v: string) {
 const angkaSaja = (v: string) => /^-?[\d.,]*\d[\d.,]*$/.test((v ?? "").trim());
 const td = "border border-[#9a9a95] px-2 py-1.5 align-top text-[12px] leading-snug";
 
+const kepalaDari = (kolom: { index: number; label: string; kelompok?: string }[]) => {
+  const out: { label: string; span: number; kelompok: boolean; index: number }[] = [];
+  kolom.forEach((k) => {
+    const akhir = out[out.length - 1];
+    if (k.kelompok && akhir && akhir.kelompok && akhir.label === k.kelompok) akhir.span += 1;
+    else out.push({ label: k.kelompok ?? k.label, span: 1, kelompok: !!k.kelompok, index: k.index });
+  });
+  return out;
+};
+
 export default function PratinjauView() {
   const { week, settings, reload, dibacaAt } = useApp();
 
@@ -44,6 +54,9 @@ export default function PratinjauView() {
   }, [reload, dibacaAt]);
 
   if (!week) return <StateGate />;
+
+  const kepalaApl = week.aplikasiTabel ? kepalaDari(week.aplikasiTabel.kolom) : [];
+  const adaKelompokApl = kepalaApl.some((k) => k.kelompok);
 
   return (
     <div className="space-y-5">
@@ -203,35 +216,79 @@ export default function PratinjauView() {
         </div>
         <p className="mt-1.5 text-[11px] italic">Keterangan: Total PNS {TOTAL_PEGAWAI} terdiri PNS 43; PPPK 13</p>
 
-        <p className="mt-4 text-[12px] font-bold">Rekapitulasi Penggunaan Aplikasi Presensi</p>
+        <p className="mt-4 text-[12px] font-bold">{week.aplikasiTabel?.judul || "Rekapitulasi Penggunaan Aplikasi Presensi"}</p>
         <table className="mt-2 w-full border-collapse">
-          <thead>
-            <tr>
-              <th className={`${th} w-10`}>No</th>
-              <th className={`${th} w-[130px]`}>Tanggal</th>
-              <th className={th}>Sikepo</th>
-              <th className={th}>ePresensi</th>
-              <th className={th}>Finger Print</th>
-              <th className={th}>Tidak Presensi</th>
-              <th className={th}>Cuti/DL</th>
-            </tr>
-          </thead>
-          <tbody>
-            {week.dates.map((d, i) => {
-              const a = week.aplikasi[norm(d)];
-              return (
-                <tr key={d}>
-                  <td className={`${td} text-center`}>{i + 1}</td>
-                  <td className={`${td} whitespace-nowrap`}>{d}</td>
-                  {(["sikepo", "epresensi", "fp", "tidak", "cutiDl"] as const).map((f) => (
-                    <td key={f} className={`${td} text-center`}>
-                      {a?.[f] ?? ""}
-                    </td>
-                  ))}
+          {week.aplikasiTabel ? (
+            <>
+              <thead>
+                <tr>
+                  {kepalaApl.map((k) =>
+                    k.kelompok ? (
+                      <th key={`k-${k.label}-${k.index}`} colSpan={k.span} className={`${th} text-center`}>
+                        {k.label}
+                      </th>
+                    ) : (
+                      <th key={`k-${k.index}`} rowSpan={adaKelompokApl ? 2 : 1} className={th}>
+                        {k.label}
+                      </th>
+                    ),
+                  )}
                 </tr>
-              );
-            })}
-          </tbody>
+                {adaKelompokApl && (
+                  <tr>
+                    {week.aplikasiTabel.kolom
+                      .filter((k) => k.kelompok)
+                      .map((k) => (
+                        <th key={k.index} className={`${th} text-center`}>
+                          {k.label}
+                        </th>
+                      ))}
+                  </tr>
+                )}
+              </thead>
+              <tbody>
+                {week.aplikasiTabel.baris.map((r) => (
+                  <tr key={r.nomor}>
+                    {week.aplikasiTabel!.kolom.map((k) => (
+                      <td key={k.index} className={`${td} ${k.label.length <= 3 ? "text-center" : ""}`}>
+                        {r.sel[k.index] ?? ""}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </>
+          ) : (
+            <>
+              <thead>
+                <tr>
+                  <th className={`${th} w-10`}>No</th>
+                  <th className={`${th} w-[130px]`}>Tanggal</th>
+                  <th className={th}>Sikepo</th>
+                  <th className={th}>ePresensi</th>
+                  <th className={th}>Finger Print</th>
+                  <th className={th}>Tidak Presensi</th>
+                  <th className={th}>Cuti/DL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {week.dates.map((d, i) => {
+                  const a = week.aplikasi[norm(d)];
+                  return (
+                    <tr key={d}>
+                      <td className={`${td} text-center`}>{i + 1}</td>
+                      <td className={`${td} whitespace-nowrap`}>{d}</td>
+                      {(["sikepo", "epresensi", "fp", "tidak", "cutiDl"] as const).map((f) => (
+                        <td key={f} className={`${td} text-center`}>
+                          {a?.[f] ?? ""}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </>
+          )}
         </table>
 
         {/* D — realisasi keuangan: persis seperti isi sheet (tabel per kode + tabel keuangan lain) */}

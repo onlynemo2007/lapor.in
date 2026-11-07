@@ -60,6 +60,39 @@ cek("payload membawa label baris tabel presensi", !!sel && sel.label === "1" && 
 const t2 = parseTabelAplikasi(CSV.split("\n").map((r) => r.split(",")));
 cek("parseTabelAplikasi bisa dipakai terpisah", !!t2 && t2.baris.length === 3, JSON.stringify(t2?.judul));
 
+
+/* ---------- tabel presensi seperti di sheet: judul kolom dua baris & isi teks ---------- */
+{
+  const CSV3 = [
+    "LAPORAN MINGGU I BULAN NOVEMBER 2026,,,,,,,",
+    ",,C,REKAPITULASI KEHADIRAN,,,,",
+    "No,,Tanggal,Kehadiran,Tidak Masuk,Dinas Luar,Cuti,,",
+    ",,2 November 2026,51,,,1,,",
+    ",,,,,,,",
+    "Rekapitulasi Penggunaan Aplikasi Presensi,,,,,,,",
+    "No,Tanggal,Presensi Menggunakan Aplikasi,,,Tidak Presensi,Cuti/DL,",
+    ",,Sikepo,Epresensi,Finger Print,,,,",
+    "1,2 November 2026,51 pegawai,1 pegawai : Fatryandi (Absen pagi dan sore),1 pegawai : M. Akhirudin,1 pegawai : Firdaus (tidak absen sore rapat di GMB),3 Pegawai : Cuti : 3 Pegawai,",
+    '2,3 November 2026,51 pegawai,"2 pegawai : Fatryandi (Absen pagi dan sore)\n\nCandra (absen sore)",-,4 pegawai : Sri Yuni Astuti (Tidak absen pagi),4 Pegawai : Cuti : 2 Pegawai,',
+  ].join("\n");
+
+  const w3 = parseWeek(CSV3, "1", "Nov I");
+  const t3 = w3.aplikasiTabel;
+  cek("judul kolom dua baris terbaca", !!t3 && t3.kolom.map((k) => k.label).join("|") === "No|Tanggal|Sikepo|Epresensi|Finger Print|Tidak Presensi|Cuti/DL", JSON.stringify(t3?.kolom));
+  cek("kelompok kolom diisi", !!t3 && t3.kolom[2].kelompok === "Presensi Menggunakan Aplikasi" && t3.kolom[4].kelompok === "Presensi Menggunakan Aplikasi", JSON.stringify(t3?.kolom));
+  cek("kolom No/Tanggal tidak punya kelompok", !!t3 && !t3.kolom[0].kelompok && !t3.kolom[5].kelompok, JSON.stringify(t3?.kolom));
+  cek("baris tanggal terbaca", !!t3 && t3.baris.length === 2 && t3.baris[0].nomor === 9, JSON.stringify(t3?.baris.map((r) => r.nomor)));
+  cek("isi teks apa adanya", !!t3 && t3.baris[0].sel[2] === "51 pegawai" && /Fatryandi/.test(t3.baris[0].sel[3]), JSON.stringify(t3?.baris[0].sel));
+  cek("teks multi-baris utuh", !!t3 && /Candra \(absen sore\)/.test(t3.baris[1].sel[3]), JSON.stringify(t3?.baris[1].sel[3]));
+  cek("judul tabel dua baris benar", !!t3 && /Rekapitulasi Penggunaan Aplikasi Presensi/.test(t3.judul), t3?.judul);
+  cek("baris judul kolom menunjuk baris atas", !!t3 && t3.header === 7, String(t3?.header));
+
+  /* angka tebakan dari teks tidak boleh menimpa sel teks */
+  const w4 = { ...w3, dirty: { ...w3.dirty, "P:2 november 2026": true } };
+  const p4 = buildPayload(w4, "tok", "Uji", true);
+  cek("tidak ada kiriman angka presensi saat tabel teks", p4.aplikasi.length === 0, JSON.stringify(p4.aplikasi));
+}
+
 const lulus = hasil.filter((h) => h.lulus).length;
 console.log(`\n${lulus}/${hasil.length} uji aplikasi presensi lulus`);
 process.exit(lulus === hasil.length ? 0 : 1);

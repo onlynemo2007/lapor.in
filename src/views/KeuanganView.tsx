@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { setKeuangan, setSelKeuangan, useApp } from "../lib/store";
 import { parseAngka, rupiah, rupiahPendek, selKey, serapan, totalAnggaran, type TabelKeuangan } from "../lib/model";
-import { SCRIPT_VERSI, acuanSisip, fetchWeek, kirimKeScript, payloadSisip } from "../lib/sheet";
+import { SCRIPT_VERSI } from "../lib/sheet";
+import { sisipBarisTabel } from "../lib/sisip";
 import { Btn, Card, I, Pill, SectionTitle, Spinner, cx, useToast } from "../components/ui";
 import { StateGate } from "./common";
 import { jamSinkron } from "../lib/sync";
@@ -94,36 +95,17 @@ export default function KeuanganView() {
 
   /** Sisipkan satu baris baru ke tabel keuangan di sheet (sebelum baris Jumlah), lalu baca ulang. */
   const tambahBaris = async (t: TabelKeuangan) => {
-    if (!settings.scriptUrl || !settings.token) {
-      toast("Hubungkan Apps Script dulu (menu Sinkronisasi) agar baris bisa ditambahkan ke sheet.", "err");
-      return;
-    }
-    const acuan = acuanSisip(t);
-    if (!acuan.acuan) {
-      toast("Tabel ini belum punya baris acuan di sheet.", "err");
-      return;
-    }
     setSisipSibuk(`${t.judul}|${t.header}`);
     try {
-      const p = payloadSisip(week, settings.token, settings.nama, [
-        { judul: t.judul, ...acuan, nilai: [] },
-      ]);
-      const r = await kirimKeScript(settings.scriptUrl, p);
-      if (!r.ok) throw new Error(r.error ?? "Skrip menolak permintaan.");
-      if (r.gagal?.length) throw new Error(r.gagal[0]);
-      if (r.verified && !r.ditulis) {
-        throw new Error(
-          `Skrip di spreadsheet belum mendukung tambah baris. Salin ulang kode v${SCRIPT_VERSI} dari menu Sinkronisasi → Apps Script, lalu Deploy versi baru.`,
-        );
-      }
-      if (!r.verified) {
-        // balasan skrip tidak terbaca browser: pastikan barisnya benar-benar bertambah
-        const sesudah = await fetchWeek(week.gid, week.tab);
-        const sama = sesudah.tabelKeuangan.find((x: TabelKeuangan) => x.judul === t.judul);
-        if (!sama || sama.baris.length <= t.baris.length) throw new Error("Skrip menerima permintaan, tetapi baris di sheet belum bertambah.");
-      }
-      await reload(undefined, true);
-      toast(`Satu baris ditambahkan di "${t.judul}" · tersimpan di sheet`);
+      const r = await sisipBarisTabel({
+        week,
+        tabel: t,
+        oleh: settings.nama,
+        token: settings.token,
+        scriptUrl: settings.scriptUrl,
+        reload: () => reload(undefined, true),
+      });
+      toast(r.pesan, r.ok ? "ok" : "err");
     } catch (e) {
       toast(e instanceof Error ? e.message : "Gagal menambah baris.", "err");
     } finally {

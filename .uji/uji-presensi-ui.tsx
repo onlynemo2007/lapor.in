@@ -12,17 +12,22 @@ const CSV = [
   ',,Humas,2 November 2026,"a1",,,',
   ",,C,REKAPITULASI KEHADIRAN,,,,",
   "No,,Tanggal,Kehadiran,Tidak Masuk,Dinas Luar,Cuti,,",
-  ",,2 November 2026,50,,,1,,",
+  ",,2 November 2026,51,,,1,,",
   ",,,,,,,",
   "Rekapitulasi Penggunaan Aplikasi Presensi,,,,,,,",
-  "No,Nama Pegawai,Sikepo,e-Presensi,Finger Print,Tidak Presensi,Cuti/DL,",
-  "1,Budi Santoso,5,5,4,,1,",
-  "2,Siti Aminah,5,4,4,1,,",
+  "No,Tanggal,Presensi Menggunakan Aplikasi,,,Tidak Presensi,Cuti/DL,",
+  ",,Sikepo,Epresensi,Finger Print,,,,",
+  "1,2 November 2026,51 pegawai,1 pegawai : Fatryandi (Absen pagi dan sore),1 pegawai : M. Akhirudin,1 pegawai : Firdaus (tidak absen sore rapat di GMB),3 Pegawai : Cuti : 3 Pegawai,",
+  '2,3 November 2026,51 pegawai,"2 pegawai : Fatryandi (Absen pagi dan sore)",-,4 pegawai : Sri Yuni Astuti (Tidak absen pagi),4 Pegawai : Cuti : 2 Pegawai,',
 ].join("\n");
 
 let aktif: ReturnType<typeof useApp> | null = null;
+const terkirim: any[] = [];
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-  if (init?.method === "POST") return { ok: true, text: async () => JSON.stringify({ ok: true, versi: "2.1", ditulis: 1, gagal: [] }) } as unknown as Response;
+  if (init?.method === "POST") {
+    try { terkirim.push(JSON.parse(String(init.body))); } catch { /* abaikan */ }
+    return { ok: true, text: async () => JSON.stringify({ ok: true, versi: "2.1", ditulis: 1, gagal: [] }) } as unknown as Response;
+  }
   const url = String(input);
   if (url.includes("aksi=ping")) return { ok: true, json: async () => ({ ok: false }), text: async () => "" } as unknown as Response;
   return { ok: true, text: async () => CSV, json: async () => ({}) } as unknown as Response;
@@ -66,39 +71,50 @@ async function main() {
 
   const c = () => aktif as unknown as ReturnType<typeof useApp>;
   const teks = () => document.body.textContent ?? "";
+  const nilaiInput = () => Array.from(document.querySelectorAll("input")).map((i) => (i as HTMLInputElement).value);
 
-  cek("tabel aplikasi presensi terbaca", !!c().week!.aplikasiTabel, JSON.stringify(Object.keys(c().week!)));
-  const nilaiInput = Array.from(document.querySelectorAll("input")).map((i) => (i as HTMLInputElement).value);
-  cek("nama pegawai muncul", nilaiInput.includes("Budi Santoso") && nilaiInput.includes("Siti Aminah"), JSON.stringify(nilaiInput));
-  const td = Array.from(document.querySelectorAll("td")).map((x) => (x.textContent ?? "").trim());
-  cek("kolom No tampil sebagai teks (tidak bisa diubah)", td.includes("1") && td.includes("2"), JSON.stringify(td.slice(0, 10)));
-  cek("judul kolom sheet dipakai", /Nama Pegawai/.test(teks()) && /Finger Print/.test(teks()), teks().slice(0, 300));
-  cek("judul asal tabel ditampilkan", /Rekapitulasi Penggunaan Aplikasi Presensi/i.test(teks()), "");
-  cek("angka penggunaan tampil", /5/.test(teks()), "");
+  const t = c().week!.aplikasiTabel;
+  cek("tabel aplikasi presensi terbaca", !!t, JSON.stringify(Object.keys(c().week!)));
+  cek("tujuh kolom termasuk Tidak Presensi & Cuti/DL", !!t && t.kolom.length === 7, JSON.stringify(t?.kolom.map((k) => k.label)));
+  cek("judul kelompok tampil", /Presensi Menggunakan Aplikasi/.test(teks()), teks().slice(0, 300));
+  cek("rincian kolom tampil", /Sikepo/.test(teks()) && /Finger Print/.test(teks()) && /Cuti\/DL/.test(teks()), teks().slice(0, 400));
+  cek("isi sel apa adanya (teks panjang)", nilaiInput().some((v) => /Fatryandi/.test(v)), JSON.stringify(nilaiInput()).slice(0, 300));
+  cek("tanggal terbaca", nilaiInput().some((v) => /2 November 2026/.test(v)), JSON.stringify(nilaiInput()).slice(0, 300));
+  cek("judul asal tabel tampil", /Rekapitulasi Penggunaan Aplikasi Presensi/.test(teks()), "");
 
-  /* ubah satu sel: Sikepo Budi 5 → 6 */
-  const budi = c().week!.aplikasiTabel!.baris[0];
-  const kunci = `${budi.nomor}:2`;
+  /* ubah satu sel teks: Sikepo baris 1 */
   await act(async () => {
-    c().setSettings({ autoSync: false });
+    c().setSettings({ scriptUrl: "https://script.test/exec", token: "tok", autoSync: false });
   });
-  const input = Array.from(document.querySelectorAll("input")).find((i) => (i as HTMLInputElement).value === "5") as HTMLInputElement | undefined;
-  cek("sel angka bisa diisi", !!input, JSON.stringify(Array.from(document.querySelectorAll("input")).map((i) => (i as HTMLInputElement).value)));
+  const sel = Array.from(document.querySelectorAll("input")).find((i) => (i as HTMLInputElement).value === "51 pegawai") as HTMLInputElement | undefined;
+  cek("sel teks bisa diubah", !!sel, JSON.stringify(nilaiInput()).slice(0, 200));
   await act(async () => {
-    if (input) await isi(input, "6");
+    if (sel) await isi(sel, "52 pegawai");
   });
   const simpan = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("Simpan")) as HTMLButtonElement;
   await act(async () => {
     simpan.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await new Promise((r) => setTimeout(r, 80));
   });
-  cek("isian sel tersimpan", c().week!.selKeuangan[kunci] === "6", JSON.stringify(c().week!.selKeuangan));
-  cek("ditandai belum terkirim", c().week!.dirty[`K:${kunci}`] === true, JSON.stringify(c().week!.dirty));
-
+  const baris1 = t!.baris[0];
+  cek("isian teks tersimpan", c().week!.selKeuangan[`${baris1.nomor}:2`] === "52 pegawai", JSON.stringify(c().week!.selKeuangan));
   const p = buildPayload(c().week!, "tok", "Uji", true);
-  const sel = p.sel.find((x) => x.baris === budi.nomor && x.kolom === 2);
-  cek("payload memuat sel itu", !!sel && sel.nilai === "6", JSON.stringify(p.sel));
-  cek("payload membawa label baris", !!sel && sel.label === budi.label && sel.labelKolom === budi.labelKolom, JSON.stringify(sel));
+  cek("payload memuat teks itu", p.sel.some((x) => x.baris === baris1.nomor && x.kolom === 2 && x.nilai === "52 pegawai"), JSON.stringify(p.sel));
+  cek("payload membawa label baris", p.sel.every((x) => x.label !== undefined && x.labelKolom !== undefined), JSON.stringify(p.sel));
+
+  /* tambah baris */
+  const tombol = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("Tambah baris")) as HTMLButtonElement;
+  cek("tombol tambah baris ada", !!tombol, "");
+  await act(async () => {
+    tombol.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 120));
+  });
+  const sisip = terkirim.map((x) => x.sisip?.[0]).filter(Boolean).pop();
+  cek("kiriman sisip terkirim", !!sisip, JSON.stringify(terkirim.map((x) => Object.keys(x))));
+  cek("sisip setelah baris terakhir", !!sisip && sisip.baris === baris1.nomor + 2 && sisip.acuan === baris1.nomor + 1, JSON.stringify(sisip));
+  cek("nomor urut baris baru diisi", !!sisip && sisip.nilai?.[0] === "3", JSON.stringify(sisip?.nilai));
+  cek("semua kolom tabel ikut", !!sisip && sisip.kolom.length === 7, JSON.stringify(sisip?.kolom));
+  cek("tanda berhasil tampil", /ditambahkan di/.test(document.body.textContent ?? ""), (document.body.textContent ?? "").slice(-160));
 
   const lulus = hasil.filter((h) => h.lulus).length;
   hasil.filter((h) => !h.lulus).forEach((h) => console.log("  GAGAL:", h.nama, "→", h.info));

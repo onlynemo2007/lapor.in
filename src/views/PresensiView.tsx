@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { setSelKeuangan, useApp } from "../lib/store";
 import { type Aplikasi, type Presensi, TOTAL_PEGAWAI, emptyAplikasi, emptyPresensi, hariDari, norm, selKey, tanggalPendek, totalPresensi } from "../lib/model";
-import { Btn, Card, I, Pill, SectionTitle, cx, useToast } from "../components/ui";
+import { Btn, Card, I, Pill, SectionTitle, Spinner, cx, useToast } from "../components/ui";
+import { sisipBarisTabel } from "../lib/sisip";
 import { StateGate } from "./common";
 
 const hitungJumlahNama = (ket: string) =>
@@ -11,13 +12,27 @@ const hitungJumlahNama = (ket: string) =>
     .filter(Boolean).length;
 
 export default function PresensiView() {
-  const { week, settings, updateWeek } = useApp();
+  const { week, settings, updateWeek, reload } = useApp();
   const toast = useToast();
   const [pres, setPres] = useState<Record<string, Presensi>>({});
   const [apl, setApl] = useState<Record<string, Aplikasi>>({});
   const [buka, setBuka] = useState<string>("");
   /** isian sel tabel aplikasi presensi (kolom mengikuti sheet) */
   const [selDraft, setSelDraft] = useState<Record<string, string>>({});
+  const [sisipSibuk, setSisipSibuk] = useState(false);
+
+  // judul kolom tabel aplikasi presensi bisa dua baris (kelompok + rincian)
+  const tabelApl = week?.aplikasiTabel;
+  const kepala = useMemo(() => {
+    const out: { label: string; span: number; kelompok: boolean; index: number }[] = [];
+    (tabelApl?.kolom ?? []).forEach((k) => {
+      const akhir = out[out.length - 1];
+      if (k.kelompok && akhir && akhir.kelompok && akhir.label === k.kelompok) akhir.span += 1;
+      else out.push({ label: k.kelompok ?? k.label, span: 1, kelompok: !!k.kelompok, index: k.index });
+    });
+    return out;
+  }, [tabelApl]);
+  const adaKelompok = kepala.some((k) => k.kelompok);
 
   // isian yang sedang diketik tidak boleh tertimpa pembacaan ulang sheet otomatis
   const awal = useRef<{ p: Record<string, Presensi>; a: Record<string, Aplikasi> }>({ p: {}, a: {} });
@@ -49,7 +64,6 @@ export default function PresensiView() {
   if (!week) return <StateGate />;
 
   // tabel aplikasi presensi apa adanya (termasuk kolom Nama) — dipakai bila tabelnya bukan per tanggal
-  const tabelApl = week.aplikasiTabel;
   const nilaiSheet: Record<string, string> = {};
   tabelApl?.baris.forEach((r) =>
     tabelApl.kolom.forEach((k) => (nilaiSheet[selKey(r.nomor, k.index)] = r.sel[k.index] ?? "")),
@@ -102,6 +116,26 @@ export default function PresensiView() {
     toast(
       `Presensi tersimpan · ${changedP.length + changedA.length + changedSel.length} isian${settings.scriptUrl && settings.token && settings.autoSync ? " · langsung ke Sheet" : ""}`,
     );
+  };
+
+  const tambahBaris = async () => {
+    if (!tabelApl) return;
+    setSisipSibuk(true);
+    try {
+      const r = await sisipBarisTabel({
+        week,
+        tabel: tabelApl,
+        oleh: settings.nama,
+        token: settings.token,
+        scriptUrl: settings.scriptUrl,
+        reload: () => reload(undefined, true),
+      });
+      toast(r.pesan, r.ok ? "ok" : "err");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Gagal menambah baris.", "err");
+    } finally {
+      setSisipSibuk(false);
+    }
   };
 
   const otomatis = (k: string) => {
@@ -217,17 +251,42 @@ export default function PresensiView() {
           <SectionTitle
             title="Penggunaan aplikasi presensi"
             sub={`${tabelApl.judul} · ${tabelApl.baris.length} baris · kolom mengikuti sheet (baris ${tabelApl.header})`}
-            right={<Pill>{tabelApl.kolom.length} kolom</Pill>}
+            right={
+              <div className="flex items-center gap-2">
+                <Pill>{tabelApl.kolom.length} kolom</Pill>
+                <Btn variant="ghost" size="sm" onClick={() => void tambahBaris()} disabled={sisipSibuk} title="Sisipkan satu baris baru di tabel ini dan simpan ke sheet">
+                  {sisipSibuk ? <Spinner className="h-4 w-4" /> : <I.plus className="h-4 w-4" />}
+                  Tambah baris
+                </Btn>
+              </div>
+            }
           />
           <div className="thin-scroll overflow-x-auto">
             <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
               <thead>
+                {adaKelompok && (
+                  <tr className="border-b border-line text-left text-[10.5px] uppercase tracking-wider text-muted">
+                    {kepala.map((k) =>
+                      k.kelompok ? (
+                        <th key={`k-${k.label}-${k.index}`} colSpan={k.span} className="whitespace-nowrap px-2 py-2 text-center font-semibold">
+                          {k.label}
+                        </th>
+                      ) : (
+                        <th key={`k-${k.index}`} rowSpan={2} className="whitespace-nowrap px-2 py-2 font-semibold">
+                          {k.label}
+                        </th>
+                      ),
+                    )}
+                  </tr>
+                )}
                 <tr className="border-b border-line text-left text-[11px] uppercase tracking-wider text-muted">
-                  {tabelApl.kolom.map((k) => (
-                    <th key={k.index} className="whitespace-nowrap py-2 pr-2 font-semibold">
-                      {k.label}
-                    </th>
-                  ))}
+                  {tabelApl.kolom
+                    .filter((k) => !adaKelompok || k.kelompok)
+                    .map((k) => (
+                      <th key={k.index} className="whitespace-nowrap px-2 py-2 font-semibold">
+                        {k.label}
+                      </th>
+                    ))}
                 </tr>
               </thead>
               <tbody>

@@ -220,15 +220,36 @@ export function parseTabelKeuangan(rows: string[][], kecuali?: Set<number>): Tab
  */
 export function parseTabelAplikasi(rows: string[][]): TabelKeuangan | null {
   for (let i = 0; i < rows.length; i++) {
-    const kolomIdx = headerAplikasi(rows[i]);
-    if (!kolomIdx) continue;
+    const bawah = headerAplikasi(rows[i]);
+    if (!bawah) continue;
+    // judul kolom bisa ditulis dua baris: baris atas = kelompok ("Presensi Menggunakan Aplikasi"),
+    // baris bawah = rinciannya (Sikepo, Epresensi, Finger Print). Kolom lain (No, Tanggal,
+    // Tidak Presensi, Cuti/DL) biasanya digabung vertikal sehingga hanya muncul di baris atas.
+    const atas = i > 0 ? selTabel(rows[i - 1]) : [];
+    const idxAtas = indeksTerisi(atas);
+    const dua = idxAtas.length >= 2 && !idxAtas.some((j) => angkaSel(atas[j])) && !headerAplikasi(rows[i - 1]);
+    const kolomIdx = dua ? [...new Set([...idxAtas, ...bawah])].sort((a, b) => a - b) : bawah;
     const baris = bacaBarisTabel(rows, i, kolomIdx);
     if (!baris.length) continue;
-    const sel = selTabel(rows[i]);
+    const selBawah = selTabel(rows[i]);
+    const kolom = kolomIdx.map((j) => {
+      const rinci = bawah.includes(j) ? (selBawah[j] ?? "") : "";
+      const label = rinci || (dua ? (atas[j] ?? "") : "") || `Kolom ${j + 1}`;
+      if (!dua || !rinci) return { index: j, label };
+      // kelompok terdekat di sebelah kiri pada baris atas
+      let kel = "";
+      for (let x = j; x >= 0; x--) {
+        if (atas[x]) {
+          kel = atas[x];
+          break;
+        }
+      }
+      return kel && kel !== label ? { index: j, label, kelompok: kel } : { index: j, label };
+    });
     return {
-      judul: judulDiAtasBaris(rows, i) || "Penggunaan aplikasi presensi",
-      header: i + 1,
-      kolom: kolomIdx.map((j) => ({ index: j, label: sel[j] || `Kolom ${j + 1}` })),
+      judul: judulDiAtasBaris(rows, dua ? i - 1 : i) || "Penggunaan aplikasi presensi",
+      header: (dua ? i - 1 : i) + 1,
+      kolom,
       baris,
     };
   }
@@ -896,7 +917,10 @@ export function buildPayload(w: WeekData, token: string, oleh: string, hanyaBeru
     const pr = w.presensi[k];
     if (inc(`C:${k}`) && pr && pr.hadir !== null) p.presensi.push({ tanggal: k, idx, nilai: presensiCells(pr) });
     const ap = w.aplikasi[k];
-    if (inc(`P:${k}`) && ap && Object.values(ap).some((v) => v !== null))
+    // Bila tabelnya dibaca apa adanya (kolom mengikuti sheet, isinya teks seperti
+    // "51 pegawai : Fatryandi …"), sel ditulis lewat jalur `sel` — angka hasil tebakan
+    // tidak boleh menimpa teks itu.
+    if (!w.aplikasiTabel && inc(`P:${k}`) && ap && Object.values(ap).some((v) => v !== null))
       p.aplikasi.push({ tanggal: k, idx, nilai: aplikasiCells(ap) });
   });
   return p;
