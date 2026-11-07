@@ -192,6 +192,8 @@ export type WeekData = {
   anggaranBaris?: { dari: number; sampai: number };
   /** tabel keuangan lain di bagian D (dibaca generik: judul, kolom, baris) */
   tabelKeuangan: TabelKeuangan[];
+  /** tabel “Rekapitulasi Penggunaan Aplikasi Presensi” dibaca apa adanya (termasuk kolom nama) */
+  aplikasiTabel?: TabelKeuangan;
   /** isian sel tabel keuangan yang belum terkirim: "baris:kolom" → teks */
   selKeuangan: Record<string, string>;
   rows: RowMap;

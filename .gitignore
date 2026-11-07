@@ -8,3 +8,4 @@ tsconfig.tsbuildinfo
 .uji/uji-keuangan-ui.mjs
 .uji/uji-isi-manual.mjs
 .uji/uji-dashboard.mjs
+.uji/uji-presensi-ui.mjs

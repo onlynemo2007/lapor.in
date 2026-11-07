@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useApp } from "../lib/store";
-import { type Aplikasi, type Presensi, TOTAL_PEGAWAI, emptyAplikasi, emptyPresensi, hariDari, norm, tanggalPendek, totalPresensi } from "../lib/model";
+import { setSelKeuangan, useApp } from "../lib/store";
+import { type Aplikasi, type Presensi, TOTAL_PEGAWAI, emptyAplikasi, emptyPresensi, hariDari, norm, selKey, tanggalPendek, totalPresensi } from "../lib/model";
 import { Btn, Card, I, Pill, SectionTitle, cx, useToast } from "../components/ui";
 import { StateGate } from "./common";
 
@@ -16,6 +16,8 @@ export default function PresensiView() {
   const [pres, setPres] = useState<Record<string, Presensi>>({});
   const [apl, setApl] = useState<Record<string, Aplikasi>>({});
   const [buka, setBuka] = useState<string>("");
+  /** isian sel tabel aplikasi presensi (kolom mengikuti sheet) */
+  const [selDraft, setSelDraft] = useState<Record<string, string>>({});
 
   // isian yang sedang diketik tidak boleh tertimpa pembacaan ulang sheet otomatis
   const awal = useRef<{ p: Record<string, Presensi>; a: Record<string, Aplikasi> }>({ p: {}, a: {} });
@@ -46,6 +48,17 @@ export default function PresensiView() {
 
   if (!week) return <StateGate />;
 
+  // tabel aplikasi presensi apa adanya (termasuk kolom Nama) — dipakai bila tabelnya bukan per tanggal
+  const tabelApl = week.aplikasiTabel;
+  const nilaiSheet: Record<string, string> = {};
+  tabelApl?.baris.forEach((r) =>
+    tabelApl.kolom.forEach((k) => (nilaiSheet[selKey(r.nomor, k.index)] = r.sel[k.index] ?? "")),
+  );
+  const nilaiSel = (kunci: string) => selDraft[kunci] ?? week.selKeuangan?.[kunci] ?? nilaiSheet[kunci] ?? "";
+  const changedSel = Object.keys(selDraft).filter(
+    (k) => selDraft[k] !== (week.selKeuangan?.[k] ?? nilaiSheet[k] ?? ""),
+  );
+
   const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   const changedP = week.dates.filter((d) => {
     const k = norm(d);
@@ -55,7 +68,7 @@ export default function PresensiView() {
     const k = norm(d);
     return apl[k] && !same(apl[k], week.aplikasi[k] ?? emptyAplikasi());
   });
-  const adaPerubahan = changedP.length + changedA.length > 0;
+  const adaPerubahan = changedP.length + changedA.length + changedSel.length > 0;
 
   const setP = (k: string, patch: Partial<Presensi>) => setPres((s) => ({ ...s, [k]: { ...s[k], ...patch } }));
   const setA = (k: string, patch: Partial<Aplikasi>) => setApl((s) => ({ ...s, [k]: { ...s[k], ...patch } }));
@@ -78,10 +91,16 @@ export default function PresensiView() {
         dirty[`P:${k}`] = true;
         meta[`P:${k}`] = { oleh: settings.nama, at: Date.now() };
       });
-      return { ...w, presensi, aplikasi, dirty, meta };
+      let next = { ...w, presensi, aplikasi, dirty, meta };
+      changedSel.forEach((kunci) => {
+        const [b, c] = kunci.split(":");
+        next = setSelKeuangan(next, Number(b), Number(c), selDraft[kunci], settings.nama);
+      });
+      return next;
     });
+    setSelDraft({});
     toast(
-      `Presensi tersimpan · ${changedP.length + changedA.length} baris${settings.scriptUrl && settings.token && settings.autoSync ? " · langsung ke Sheet" : ""}`,
+      `Presensi tersimpan · ${changedP.length + changedA.length + changedSel.length} isian${settings.scriptUrl && settings.token && settings.autoSync ? " · langsung ke Sheet" : ""}`,
     );
   };
 
@@ -105,7 +124,7 @@ export default function PresensiView() {
         </div>
         <Btn variant="brand" onClick={simpan} disabled={!adaPerubahan}>
           <I.check className="h-4 w-4" />
-          Simpan presensi{adaPerubahan ? ` (${changedP.length + changedA.length})` : ""}
+          Simpan presensi{adaPerubahan ? ` (${changedP.length + changedA.length + changedSel.length})` : ""}
         </Btn>
       </div>
 
@@ -193,7 +212,62 @@ export default function PresensiView() {
         })}
       </div>
 
-      {Object.keys(week.rows.P).length === 0 ? (
+      {tabelApl ? (
+        <Card className="p-5">
+          <SectionTitle
+            title="Penggunaan aplikasi presensi"
+            sub={`${tabelApl.judul} · ${tabelApl.baris.length} baris · kolom mengikuti sheet (baris ${tabelApl.header})`}
+            right={<Pill>{tabelApl.kolom.length} kolom</Pill>}
+          />
+          <div className="thin-scroll overflow-x-auto">
+            <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
+              <thead>
+                <tr className="border-b border-line text-left text-[11px] uppercase tracking-wider text-muted">
+                  {tabelApl.kolom.map((k) => (
+                    <th key={k.index} className="whitespace-nowrap py-2 pr-2 font-semibold">
+                      {k.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tabelApl.baris.map((r) => (
+                  <tr key={r.nomor} className="border-b border-line/70 align-top">
+                    {tabelApl.kolom.map((k) => {
+                      const kunci = selKey(r.nomor, k.index);
+                      const kotor = selDraft[kunci] !== undefined && selDraft[kunci] !== (week.selKeuangan?.[kunci] ?? nilaiSheet[kunci] ?? "");
+                      // kolom penanda hanya bisa dibaca — kecuali pada baris kosong (baris baru)
+                      if (k.index === r.labelKolom && r.label)
+                        return (
+                          <td key={k.index} className="py-2 pr-2 font-semibold">
+                            {r.sel[k.index] ?? r.label}
+                          </td>
+                        );
+                      return (
+                        <td key={k.index} className="py-1.5 pr-2">
+                          <input
+                            value={nilaiSel(kunci)}
+                            onChange={(e) => setSelDraft((d) => ({ ...d, [kunci]: e.target.value }))}
+                            placeholder="—"
+                            className={cx(
+                              "w-full min-w-[76px] rounded-lg border bg-white px-2 py-1.5 text-[12px] outline-none focus:border-brand",
+                              kotor ? "border-warn bg-warn-soft/40" : "border-line",
+                            )}
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[11.5px] leading-relaxed text-muted">
+            Tabel ini ditulis apa adanya ke baris &amp; kolom yang sama di sheet (dengan pengaman label baris), jadi nama
+            pegawai dan kolom lain tidak berubah.
+          </p>
+        </Card>
+      ) : Object.keys(week.rows.P).length === 0 ? (
         <Card className="bg-paper p-5 text-[13px] text-muted">
           Tab <b>{week.tab}</b> tidak memiliki tabel “Rekapitulasi Penggunaan Aplikasi Presensi”.
         </Card>
@@ -243,7 +317,7 @@ export default function PresensiView() {
 
       {adaPerubahan && (
         <div className="no-print anim-pop sticky bottom-20 z-20 flex items-center justify-between gap-3 rounded-2xl bg-ink px-4 py-3 text-white shadow-xl lg:bottom-6">
-          <span className="text-[13px] font-medium">{changedP.length + changedA.length} baris presensi diubah</span>
+          <span className="text-[13px] font-medium">{changedP.length + changedA.length + changedSel.length} isian presensi diubah</span>
           <Btn variant="brand" size="sm" onClick={simpan}>
             <I.check className="h-4 w-4" /> Simpan
           </Btn>

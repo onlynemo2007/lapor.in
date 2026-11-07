@@ -52,7 +52,7 @@ function isiTab() {
 {
   const env = lingkunganDari(isiTab());
   const a = api(env);
-  cek("versi skrip terbaru", a.VERSI === "2.0", a.VERSI);
+  cek("versi skrip terbaru", a.VERSI === "2.1", a.VERSI);
 
   const r = post(a, {
     token: a.TOKEN,

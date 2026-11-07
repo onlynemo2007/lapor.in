@@ -32,7 +32,7 @@ const D = "https://drive.google.com/file/d/DDD/view";
 {
   const env = lingkungan("");
   const a = api(env);
-  cek("versi skrip terbaru", a.VERSI === "2.0", a.VERSI);
+  cek("versi skrip terbaru", a.VERSI === "2.1", a.VERSI);
 
   const r = kirim(a, "3 november 2026", `3 November 2026: ${A}`, { gabung: true });
   cek("kiriman diterima", r.ok === true && r.ditulis >= 1 && r.gagal.length === 0, JSON.stringify(r));

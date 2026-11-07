@@ -100,6 +100,96 @@ const rapiTautan = (s: string) => s.trim().replace(/^www\./i, "https://www.");
 const KATA_KEUANGAN = /\b(pagu|realisasi|sisa|jumlah|nilai|penarikan|anggaran|pembayaran|up|ls|triwulan|akun)\b/i;
 const angkaSel = (t: string) => /^-?[\d.,\s]+$/.test(t) && /\d/.test(t);
 
+/* ------------------------ pembacaan tabel apa adanya ------------------------ */
+
+const selTabel = (r: string[]) => (r ?? []).map((x) => (x ?? "").trim());
+const indeksTerisi = (r: string[]) => selTabel(r).map((t, j) => (t ? j : -1)).filter((j) => j >= 0);
+/** Judul kolom harus pendek; baris data panjang tidak boleh dianggap judul kolom. */
+const labelKolomPendek = (t: string) => t.length <= 24 && t.split(/\s+/).length <= 4;
+
+/** Kolom sebuah baris judul, bila baris itu memang judul kolom tabel yang dicari. */
+function kolomHeader(r: string[], cocok: (judul: string[]) => boolean): number[] | null {
+  const sel = selTabel(r);
+  const idx = indeksTerisi(sel);
+  if (idx.length < 2) return null;
+  const judul = idx.map((j) => sel[j]);
+  // baris data hampir selalu memuat angka atau kalimat panjang — jangan dianggap judul kolom
+  if (judul.every((t) => angkaSel(t))) return null;
+  if (idx.some((j) => angkaSel(sel[j]))) return null;
+  if (judul.some((t) => !labelKolomPendek(t))) return null;
+  return cocok(judul) ? idx : null;
+}
+
+const headerKeuangan = (r: string[]) =>
+  kolomHeader(r, (judul) => {
+    const adaKeuangan = judul.filter((t) => KATA_KEUANGAN.test(t)).length > 0;
+    const adaUraian = judul.some((t) => /uraian|kegiatan|keterangan/i.test(t));
+    return adaKeuangan && (adaUraian || judul.length >= 3);
+  });
+
+/** Baris judul tabel aplikasi presensi: memuat Sikepo / e-Presensi / Finger Print. */
+const headerAplikasi = (r: string[]) =>
+  kolomHeader(r, (judul) => judul.some((t) => /sikepo|finger|e[\s-]?presensi/i.test(t)));
+
+const judulTeks = (r: string[]): string => {
+  const sel = selTabel(r).filter(Boolean);
+  const teks = sel.filter((t) => !/^[A-F]$/.test(t)); // buang penanda bagian satu huruf ("D")
+  return (teks[0] ?? sel[0] ?? "").replace(/\s+/g, " ");
+};
+
+function tampakJudul(r: string[], headerDari: (x: string[]) => number[] | null) {
+  const idx = indeksTerisi(r ?? []);
+  if (!idx.length || idx.length > 3) return false;
+  const sel = selTabel(r);
+  return idx.map((j) => sel[j]).every((t) => !angkaSel(t)) && !headerDari(r ?? []);
+}
+
+/**
+ * Baca baris data sebuah tabel mulai baris judul kolom `mulai` (0-based) memakai kolom `kolomIdx`.
+ * Baris kosong di tengah tabel ikut dibaca (mis. baris baru yang disisipkan aplikasi); baris
+ * kosong penutup tabel dibuang, begitu juga tabel lain di bawahnya.
+ */
+function bacaBarisTabel(rows: string[][], mulai: number, kolomIdx: number[]): BarisKeuangan[] {
+  const baris: BarisKeuangan[] = [];
+  const kosong: number[] = [];
+  const tampak = (r: string[]) => tampakJudul(r, headerKeuangan);
+  for (let j = mulai + 1; j < rows.length; j++) {
+    const sel = selTabel(rows[j]);
+    if (!indeksTerisi(sel).length) {
+      kosong.push(j + 1);
+      continue;
+    }
+    if (headerKeuangan(rows[j])) break;
+    const idxTerisi = indeksTerisi(sel).filter((k) => kolomIdx.includes(k));
+    // baris "Jumlah"/"Total" penutup tabel tetap dibaca walau barisnya hanya berisi satu sel
+    const total = idxTerisi.length > 0 && /^(jumlah|total|sub ?total|grand ?total)\b/i.test(sel[idxTerisi[0]] ?? "");
+    if (!total && tampak(rows[j]) && (!indeksTerisi(rows[j + 1] ?? []).length || headerKeuangan(rows[j + 1] ?? []))) break;
+    if (!idxTerisi.length) {
+      if (tampak(rows[j])) break;
+      continue;
+    }
+    // tabel berlanjut → baris kosong di atasnya ikut ditampilkan (bisa langsung diisi)
+    kosong.splice(0).forEach((nomor) => baris.push({ nomor, label: "", labelKolom: kolomIdx[0], sel: {} }));
+    const labelKolom = idxTerisi[0];
+    const selBaris: Record<number, string> = {};
+    idxTerisi.forEach((k) => (selBaris[k] = sel[k]));
+    baris.push({ nomor: j + 1, label: sel[labelKolom] ?? "", labelKolom, sel: selBaris });
+    if (baris.length >= 80) break;
+  }
+  return baris;
+}
+
+/** Judul tabel: baris teks terdekat (maks 3 baris) di atas judul kolom. */
+function judulDiAtasBaris(rows: string[][], i: number): string {
+  for (let b = i - 1; b >= 0 && b >= i - 3; b--) {
+    if (tampakJudul(rows[b], headerKeuangan) || tampakJudul(rows[b], headerAplikasi)) {
+      const judul = judulTeks(rows[b]);
+      if (judul) return judul;
+    }
+  }
+  return "";
+}
+
 /**
  * Baca semua tabel keuangan di tab (Rekapitulasi UP, Pembayaran Melalui LS, Realisasi Anggaran,
  * Rencana Penarikan, …). Judul diambil dari baris teks di atas baris judul kolom; kolom & baris
@@ -107,89 +197,42 @@ const angkaSel = (t: string) => /^-?[\d.,\s]+$/.test(t) && /\d/.test(t);
  */
 export function parseTabelKeuangan(rows: string[][], kecuali?: Set<number>): TabelKeuangan[] {
   const out: TabelKeuangan[] = [];
-  const isi = (r: string[]) => (r ?? []).map((x) => (x ?? "").trim());
-  const nonKosong = (r: string[]) => isi(r).map((t, j) => (t ? j : -1)).filter((j) => j >= 0);
-
-  const labelKolom = (t: string) => t.length <= 24 && t.split(/\s+/).length <= 4;
-  const headerDari = (r: string[]): number[] | null => {
-    const sel = isi(r);
-    const idx = nonKosong(sel);
-    if (idx.length < 2) return null;
-    const judul = idx.map((j) => sel[j]);
-    if (judul.every((t) => angkaSel(t))) return null;
-    // baris data hampir selalu memuat angka atau kalimat panjang — jangan dianggap judul kolom
-    if (idx.some((j) => angkaSel(sel[j]))) return null;
-    // judul kolom itu pendek ("Pagu", "Pembayaran Melalui LS"); baris data bisa panjang
-    // ("PEMBAYARAN PUMK DUKMAN MELALUI TUNAI") dan tidak boleh memecah tabel
-    if (judul.some((t) => !labelKolom(t))) return null;
-    const adaKeuangan = judul.filter((t) => KATA_KEUANGAN.test(t)).length > 0;
-    const adaUraian = judul.some((t) => /uraian|kegiatan|keterangan/i.test(t));
-    if (!adaKeuangan) return null;
-    if (!adaUraian && judul.length < 3) return null;
-    return idx;
-  };
-
-  const judulDari = (r: string[]): string => {
-    const sel = isi(r).filter(Boolean);
-    // buang penanda bagian satu huruf ("D")
-    const teks = sel.filter((t) => !/^[A-F]$/.test(t));
-    return (teks[0] ?? sel[0] ?? "").replace(/\s+/g, " ");
-  };
-
-  const tampakJudul = (r: string[]) => {
-    const idx = nonKosong(r);
-    if (!idx.length || idx.length > 3) return false;
-    const sel = isi(r);
-    const teks = idx.map((j) => sel[j]);
-    return teks.every((t) => !angkaSel(t)) && !headerDari(r);
-  };
-
   for (let i = 0; i < rows.length; i++) {
-    const kolomIdx = headerDari(rows[i]);
+    const kolomIdx = headerKeuangan(rows[i]);
     if (!kolomIdx) continue;
-    const header = i + 1;
-    // judul: baris teks terdekat di atasnya
-    let judul = "";
-    for (let b = i - 1; b >= 0 && b >= i - 3; b--) {
-      if (tampakJudul(rows[b])) {
-        judul = judulDari(rows[b]);
-        if (judul) break;
-      }
-    }
     if (kecuali?.has(i + 1)) continue;
-    const sel = isi(rows[i]);
-    const kolom = kolomIdx.map((j) => ({ index: j, label: sel[j] || `Kolom ${j + 1}` }));
-
-    const baris: BarisKeuangan[] = [];
-    // baris kosong di tengah tabel (mis. baris baru yang disisipkan dari aplikasi) ditahan dulu;
-    // hanya dipakai bila tabelnya memang berlanjut sesudahnya, jadi baris kosong penutup tetap dibuang
-    const kosong: number[] = [];
-    for (let j = i + 1; j < rows.length; j++) {
-      const isiBaris = isi(rows[j]);
-      if (!nonKosong(isiBaris).length) {
-        kosong.push(j + 1);
-        continue;
-      }
-      if (headerDari(rows[j])) break;
-      const idxTerisi = nonKosong(isiBaris).filter((k) => kolomIdx.includes(k));
-      // baris "Jumlah"/"Total" penutup tabel tetap dibaca walau barisnya hanya berisi satu sel
-      const total = idxTerisi.length > 0 && /^(jumlah|total|sub ?total|grand ?total)\b/i.test(isiBaris[idxTerisi[0]] ?? "");
-      if (!total && tampakJudul(rows[j]) && (!nonKosong(rows[j + 1] ?? []).length || headerDari(rows[j + 1] ?? []))) break;
-      if (!idxTerisi.length) {
-        if (tampakJudul(rows[j])) break;
-        continue;
-      }
-      // tabel berlanjut → baris kosong di atasnya ikut ditampilkan (bisa langsung diisi)
-      kosong.splice(0).forEach((nomor) => baris.push({ nomor, label: "", labelKolom: kolomIdx[0], sel: {} }));
-      const labelKolom = idxTerisi[0];
-      const selBaris: Record<number, string> = {};
-      idxTerisi.forEach((k) => (selBaris[k] = isiBaris[k]));
-      baris.push({ nomor: j + 1, label: isiBaris[labelKolom] ?? "", labelKolom, sel: selBaris });
-      if (baris.length >= 80) break;
-    }
-    if (baris.length) out.push({ judul: judul || `Tabel keuangan ${out.length + 1}`, header, kolom, baris });
+    const baris = bacaBarisTabel(rows, i, kolomIdx);
+    if (!baris.length) continue;
+    const sel = selTabel(rows[i]);
+    out.push({
+      judul: judulDiAtasBaris(rows, i) || `Tabel keuangan ${out.length + 1}`,
+      header: i + 1,
+      kolom: kolomIdx.map((j) => ({ index: j, label: sel[j] || `Kolom ${j + 1}` })),
+      baris,
+    });
   }
   return out;
+}
+
+/**
+ * Baca tabel “Rekapitulasi Penggunaan Aplikasi Presensi” apa adanya (kolom mengikuti sheet),
+ * termasuk kolom nama pegawai bila ada.
+ */
+export function parseTabelAplikasi(rows: string[][]): TabelKeuangan | null {
+  for (let i = 0; i < rows.length; i++) {
+    const kolomIdx = headerAplikasi(rows[i]);
+    if (!kolomIdx) continue;
+    const baris = bacaBarisTabel(rows, i, kolomIdx);
+    if (!baris.length) continue;
+    const sel = selTabel(rows[i]);
+    return {
+      judul: judulDiAtasBaris(rows, i) || "Penggunaan aplikasi presensi",
+      header: i + 1,
+      kolom: kolomIdx.map((j) => ({ index: j, label: sel[j] || `Kolom ${j + 1}` })),
+      baris,
+    };
+  }
+  return null;
 }
 
 /** Judul bagian yang lazim dipakai sheet (dipakai agar baris data tidak dianggap judul bagian). */
@@ -358,20 +401,19 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
       }
     }
     if (sec === "P") {
-      const g = has(r, (x) => x === "tanggal");
-      if (g >= 0) {
-        c.pTgl = g;
+      // kolom dibaca dari baris judul yang sama, baik judulnya memuat “Tanggal” maupun hanya aplikasinya
+      const g = has(r, (x) => x === "tanggal") >= 0 ? has(r, (x) => x === "tanggal") : -1;
+      const s = has(r, (x) => x === "sikepo");
+      const e = has(r, (x) => x.replace(/[-\s]/g, "") === "epresensi");
+      const f = has(r, (x) => x.startsWith("finger"));
+      if (g >= 0 || s >= 0) {
+        if (g >= 0) c.pTgl = g;
+        if (s >= 0) c.pSikepo = s;
+        if (e >= 0) c.pEp = e;
+        if (f >= 0) c.pFp = f;
         const td = has(r, (x) => x.startsWith("tidak presensi")), cd = has(r, (x) => x.startsWith("cuti"));
         if (td >= 0) c.pTidak = td;
         if (cd >= 0) c.pCutiDl = cd;
-        return;
-      }
-      const s = has(r, (x) => x === "sikepo");
-      if (s >= 0) {
-        c.pSikepo = s;
-        const e = has(r, (x) => x.replace(/[-\s]/g, "") === "epresensi"), f = has(r, (x) => x.startsWith("finger"));
-        if (e >= 0) c.pEp = e;
-        if (f >= 0) c.pFp = f;
         return;
       }
     }
@@ -506,6 +548,10 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
 
   // tabel ber-kode lain tetap ditampilkan apa adanya (bisa diisi selnya), tabel utama tidak diduplikasi
   w.tabelKeuangan = parseTabelKeuangan(rows, new Set(utama ? [utama.header] : []));
+
+  // tabel penggunaan aplikasi presensi dibaca apa adanya supaya kolom seperti “Nama” ikut tampil
+  const tabelApl = parseTabelAplikasi(rows);
+  if (tabelApl) w.aplikasiTabel = tabelApl;
 
   // baris lampiran = baris tanggal pertama tiap tim/sub (Program/Monev: baris pertama sub)
   Object.entries(firstRow).forEach(([lk, row]) => {
@@ -834,7 +880,9 @@ export function buildPayload(w: WeekData, token: string, oleh: string, hanyaBeru
     const baris = Number(b);
     const kolom = Number(c);
     if (!baris || Number.isNaN(kolom)) return;
-    const pemilik = (w.tabelKeuangan ?? []).flatMap((t) => t.baris).find((r) => r.nomor === baris);
+    const pemilik = [...(w.tabelKeuangan ?? []).flatMap((t) => t.baris), ...(w.aplikasiTabel?.baris ?? [])].find(
+      (r) => r.nomor === baris,
+    );
     p.sel.push({
       baris,
       kolom,
@@ -923,7 +971,7 @@ export async function kirimKeScript(url: string, payload: Payload, batasMs = 250
 }
 
 /** Versi kode Apps Script yang disalin dari aplikasi (harus sama dengan `VERSI` di skrip). */
-export const SCRIPT_VERSI = "2.0";
+export const SCRIPT_VERSI = "2.1";
 
 export type BuatTabResult = {
   ok: boolean;
@@ -1025,6 +1073,9 @@ export const APPS_SCRIPT = `/**
  * v2.0 bisa MENYISIPKAN baris baru di tabel keuangan (Rekapitulasi UP, Pembayaran
  * Melalui LS, …) tepat sebelum baris Jumlah: rumus baris di atasnya diwarisi dan
  * rentang rumus Jumlah diperluas supaya baris baru ikut terhitung.
+ * v2.1 kolom tabel penggunaan aplikasi presensi dibaca dari satu baris judul yang
+ * sama (Tanggal + Sikepo + e-Presensi + Finger Print), jadi angkanya tidak lagi
+ * tertukar kolom.
  */
 const TOKEN = 'GANTI-DENGAN-KODE-RAHASIA'; // samakan dengan isian di aplikasi
 const VERSI = '${SCRIPT_VERSI}';
@@ -1275,18 +1326,19 @@ function petakan(sh) {
       }
       if (tglRe.test(n(cell(c.cTgl)))) { m.C[n(cell(c.cTgl))] = row; m.Cidx.push(row); }
     } else if (sec === 'P') {
+      // satu baris judul bisa memuat “Tanggal” sekaligus nama kolom aplikasi
       const g = cari(r, x => x === 'tanggal');
-      if (g >= 0) {
-        c.pTgl = g;
-        const td = cari(r, x => x.indexOf('tidak presensi') === 0), cd = cari(r, x => x.indexOf('cuti') === 0);
-        if (td >= 0) c.pTidak = td; if (cd >= 0) c.pCutiDl = cd;
-        continue;
-      }
       const s = cari(r, x => x === 'sikepo');
-      if (s >= 0) {
-        c.pSikepo = s;
-        const e = cari(r, x => x.replace(/[-\\s]/g, '') === 'epresensi'), f = cari(r, x => x.indexOf('finger') === 0);
-        if (e >= 0) c.pEp = e; if (f >= 0) c.pFp = f;
+      const e = cari(r, x => x.replace(/[-\\s]/g, '') === 'epresensi');
+      const f = cari(r, x => x.indexOf('finger') === 0);
+      if (g >= 0 || s >= 0) {
+        if (g >= 0) c.pTgl = g;
+        if (s >= 0) c.pSikepo = s;
+        if (e >= 0) c.pEp = e;
+        if (f >= 0) c.pFp = f;
+        const td = cari(r, x => x.indexOf('tidak presensi') === 0), cd = cari(r, x => x.indexOf('cuti') === 0);
+        if (td >= 0) c.pTidak = td;
+        if (cd >= 0) c.pCutiDl = cd;
         continue;
       }
       if (tglRe.test(n(cell(c.pTgl)))) { m.P[n(cell(c.pTgl))] = row; m.Pidx.push(row); }
