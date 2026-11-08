@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { setKeuangan, setSelKeuangan, useApp } from "../lib/store";
-import { parseAngka, rupiah, rupiahPendek, selKey, serapan, totalAnggaran, type TabelKeuangan } from "../lib/model";
+import { kodeInduk, parseAngka, rupiah, rupiahPendek, selKey, serapan, totalAnggaran, type TabelKeuangan } from "../lib/model";
 import { SCRIPT_VERSI } from "../lib/sheet";
 import { sisipBarisTabel } from "../lib/sisip";
 import { Btn, Card, I, Pill, SectionTitle, Spinner, cx, useToast } from "../components/ui";
@@ -42,6 +42,8 @@ export default function KeuanganView() {
   const baris = week?.anggaran ?? [];
   const total = useMemo(() => totalAnggaran(baris), [baris]);
   const persen = serapan(total.realisasi, total.pagu);
+  /** Baris induk (Total/Program) dijumlahkan rumus sheet → hanya dibaca, tidak ditulis aplikasi. */
+  const induk = useMemo(() => kodeInduk(baris), [baris]);
 
   // tabel keuangan lain (Rekapitulasi UP, Pembayaran LS, Rencana Penarikan, …)
   const tabel = week?.tabelKeuangan ?? [];
@@ -58,6 +60,7 @@ export default function KeuanganView() {
   );
 
   const berubah = baris.filter((a) => {
+    if (induk.has(a.kode)) return false; // baris agregat: angkanya dari rumus sheet
     const d = draft[a.kode];
     if (!d) return false;
     return d.uraian !== a.uraian || parseAngka(d.pagu) !== a.pagu || parseAngka(d.realisasi) !== a.realisasi;
@@ -243,38 +246,60 @@ export default function KeuanganView() {
               </thead>
               <tbody>
                 {tampil.map((a) => {
+                  const agregat = induk.has(a.kode);
                   const d = draft[a.kode] ?? { uraian: a.uraian, pagu: angkaTeks(a.pagu), realisasi: angkaTeks(a.realisasi) };
-                  const pagu = parseAngka(d.pagu);
-                  const real = parseAngka(d.realisasi);
+                  const pagu = agregat ? a.pagu : parseAngka(d.pagu);
+                  const real = agregat ? a.realisasi : parseAngka(d.realisasi);
                   const p = serapan(real, pagu);
-                  const kotor = d.uraian !== a.uraian || pagu !== a.pagu || real !== a.realisasi;
+                  const kotor = !agregat && (d.uraian !== a.uraian || pagu !== a.pagu || real !== a.realisasi);
                   return (
                     <tr key={a.kode} className={cx("border-b border-line/70 align-top", kotor && "bg-warn-soft/40")}>
-                      <td className="py-2 pr-2 font-mono text-[11.5px] text-muted">{a.kode}</td>
-                      <td className="py-2 pr-2">
-                        <input
-                          value={d.uraian}
-                          onChange={(e) => set(a.kode, { uraian: e.target.value })}
-                          className="w-full rounded-lg border border-transparent bg-transparent px-1.5 py-1 text-[12.5px] outline-none transition hover:border-line focus:border-brand focus:bg-white"
-                        />
+                      <td className="py-2 pr-2 font-mono text-[11.5px] text-muted">
+                        {a.kode}
+                        {agregat && <Pill className="ml-1.5">otomatis</Pill>}
                       </td>
                       <td className="py-2 pr-2">
-                        <input
-                          value={formatAngka(d.pagu)}
-                          onChange={(e) => set(a.kode, { pagu: e.target.value.replace(/[^\d]/g, "") })}
-                          inputMode="numeric"
-                          placeholder="0"
-                          className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-right font-mono text-[12px] outline-none focus:border-brand"
-                        />
+                        {agregat ? (
+                          <span className="block px-1.5 py-1 text-[12.5px] font-semibold" title="Dijumlahkan rumus sheet dari baris rincian di bawahnya">
+                            {a.uraian}
+                          </span>
+                        ) : (
+                          <input
+                            value={d.uraian}
+                            onChange={(e) => set(a.kode, { uraian: e.target.value })}
+                            className="w-full rounded-lg border border-transparent bg-transparent px-1.5 py-1 text-[12.5px] outline-none transition hover:border-line focus:border-brand focus:bg-white"
+                          />
+                        )}
                       </td>
                       <td className="py-2 pr-2">
-                        <input
-                          value={formatAngka(d.realisasi)}
-                          onChange={(e) => set(a.kode, { realisasi: e.target.value.replace(/[^\d]/g, "") })}
-                          inputMode="numeric"
-                          placeholder="0"
-                          className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-right font-mono text-[12px] outline-none focus:border-brand"
-                        />
+                        {agregat ? (
+                          <span className="block rounded-lg bg-paper px-2 py-1.5 text-right font-mono text-[12px] font-semibold text-muted">
+                            {formatAngka(angkaTeks(a.pagu)) || "0"}
+                          </span>
+                        ) : (
+                          <input
+                            value={formatAngka(d.pagu)}
+                            onChange={(e) => set(a.kode, { pagu: e.target.value.replace(/[^\d]/g, "") })}
+                            inputMode="numeric"
+                            placeholder="0"
+                            className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-right font-mono text-[12px] outline-none focus:border-brand"
+                          />
+                        )}
+                      </td>
+                      <td className="py-2 pr-2">
+                        {agregat ? (
+                          <span className="block rounded-lg bg-paper px-2 py-1.5 text-right font-mono text-[12px] font-semibold text-muted">
+                            {formatAngka(angkaTeks(a.realisasi)) || "0"}
+                          </span>
+                        ) : (
+                          <input
+                            value={formatAngka(d.realisasi)}
+                            onChange={(e) => set(a.kode, { realisasi: e.target.value.replace(/[^\d]/g, "") })}
+                            inputMode="numeric"
+                            placeholder="0"
+                            className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-right font-mono text-[12px] outline-none focus:border-brand"
+                          />
+                        )}
                       </td>
                       <td className="py-2 pr-2 text-right font-mono text-[12px] text-muted">
                         {pagu || real ? (pagu - real).toLocaleString("id-ID") : "—"}

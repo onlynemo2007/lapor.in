@@ -1,5 +1,6 @@
 import { parseWeek, buildPayload, mergeWeek } from "/tmp/sheet.mjs";
 import { setKeuangan } from "/tmp/store.mjs";
+import { kodeInduk, totalAnggaran } from "/tmp/model.mjs";
 
 const hasil = [];
 const cek = (nama, lulus, info = "") => {
@@ -120,6 +121,38 @@ const gabung = mergeWeek(ulang, baru);
 cek("isian belum terkirim dipertahankan saat baca ulang", gabung.anggaran.find((a) => a.kode === "032.12.02").realisasi === 33000000, JSON.stringify(gabung.anggaran));
 cek("baris lain mengikuti sheet", gabung.anggaran.find((a) => a.kode === "032.12.01").realisasi === 25000000, JSON.stringify(gabung.anggaran));
 cek("nomor baris tetap dari sheet", gabung.anggaran.every((a) => typeof a.baris === "number"), JSON.stringify(gabung.anggaran));
+
+
+/* ---- total bagian D: pakai baris Total / hanya daun (tidak dobel hitung) ---- */
+{
+  const csvInduk = [
+    "LAPORAN MINGGU I BULAN NOVEMBER 2026",
+    ",,D,REALISASI KEUANGAN",
+    ",Kode,Uraian,Pagu,Realisasi",
+    ",032.12.691629,Total,300,120",
+    ",032.12.DL,Program DL,100,50",
+    ",7948,Program 7948,100,50",
+    ",7948.ADF,Sertifikasi Lembaga,60,30",
+    ",7948.AFA,Norma,40,20",
+    ",032.12.WA,Program WA,200,70",
+    ",2378,Dukungan Manajemen,200,70",
+    ",2378.EBA,Layanan Internal,200,70",
+    ",2378.EBA.962,Layanan Umum,150,50",
+    ",2378.EBA.963,Layanan Data,50,20",
+  ].join("\n");
+  const wInduk = parseWeek(csvInduk, "9", "Nov I");
+  cek("baris induk terdeteksi", ["7948", "2378", "2378.EBA", "032.12.DL"].every((k) => kodeInduk(wInduk.anggaran).has(k)), JSON.stringify([...kodeInduk(wInduk.anggaran)]));
+  const t = totalAnggaran(wInduk.anggaran);
+  cek("total memakai baris Total, bukan jumlah semua baris", t.pagu === 300 && t.realisasi === 120, JSON.stringify(t));
+
+  const tanpaTotal = parseWeek(csvInduk.split("\n").filter((r) => !r.includes(",Total,")).join("\n"), "9", "Nov I");
+  const t2 = totalAnggaran(tanpaTotal.anggaran);
+  cek(
+    "tanpa baris Total: hanya rincian (daun) yang dijumlah",
+    t2.pagu === 300 && t2.realisasi === 120,
+    JSON.stringify({ t2, rows: tanpaTotal.anggaran.map((a) => [a.kode, a.pagu]) }),
+  );
+}
 
 const lulus = hasil.filter((h) => h.lulus).length;
 console.log(`\n${lulus}/${hasil.length} uji keuangan (data) lulus`);

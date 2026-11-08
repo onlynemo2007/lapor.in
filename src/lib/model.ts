@@ -103,8 +103,38 @@ export const angKey = (a: Anggaran) => a.kode;
 /** Persentase serapan anggaran (0 bila pagu belum diisi). */
 export const serapan = (realisasi: number, pagu: number) => (pagu > 0 ? (realisasi / pagu) * 100 : 0);
 
-export const totalAnggaran = (arr: Anggaran[]) =>
-  arr.reduce((t, a) => ({ pagu: t.pagu + a.pagu, realisasi: t.realisasi + a.realisasi }), { pagu: 0, realisasi: 0 });
+/**
+ * Kode baris induk (agregat): kodenya jadi awalan kode lain, mis. `7948` untuk `7948.ADF`,
+ * atau `2378.EBA` untuk `2378.EBA.962`. Baris induk dijumlahkan sheet lewat rumus,
+ * jadi aplikasi tidak boleh menjumlahkannya lagi (dobel hitung) dan tidak boleh menimpanya.
+ */
+export const kodeInduk = (arr: Anggaran[]) => {
+  const induk = new Set<string>();
+  /** baris rekap tingkat program (mis. 032.12.DL / 032.12.WA) — isinya sudah terwakili rincian */
+  const polaProgram = /^032\.12\.[A-Za-z]{2,}$/;
+  arr.forEach((a) => {
+    if (!a.kode) return;
+    if (arr.some((b) => b.kode !== a.kode && b.kode.startsWith(`${a.kode}.`))) induk.add(a.kode);
+    else if (polaProgram.test(a.kode)) induk.add(a.kode);
+  });
+  return induk;
+};
+
+/**
+ * Total pagu & realisasi bagian D:
+ * 1. pakai baris berlabel "Total" dari sheet (angka otoritatif) bila ada,
+ * 2. kalau tidak ada, jumlahkan hanya baris rincian (daun) — baris induk tidak ikut,
+ * 3. terakhir, jumlahkan semua baris apa adanya.
+ */
+export const totalAnggaran = (arr: Anggaran[]) => {
+  const jumlah = (rows: Anggaran[]) =>
+    rows.reduce((t, a) => ({ pagu: t.pagu + a.pagu, realisasi: t.realisasi + a.realisasi }), { pagu: 0, realisasi: 0 });
+  const total = arr.find((a) => /^total$/i.test(a.uraian.trim()));
+  if (total) return { pagu: total.pagu, realisasi: total.realisasi };
+  const induk = kodeInduk(arr);
+  const daun = arr.filter((a) => !induk.has(a.kode));
+  return jumlah(daun.length ? daun : arr);
+};
 
 /** Satu baris pada tabel keuangan bebas (Rekapitulasi UP, Pembayaran LS, Rencana Penarikan, …). */
 export type BarisKeuangan = {
