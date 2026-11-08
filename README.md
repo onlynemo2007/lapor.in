@@ -80,6 +80,32 @@ URL Web App dan token disimpan pada kunci penyimpanan terpisah (`laporin:koneksi
 saat data mingguan diperbarui, sheet dimuat ulang, aplikasi versi baru dibuka, atau ruang penyimpanan data penuh.
 Mengosongkan kolom URL/token juga tidak menghapus koneksi — pemutusan hanya lewat tombol **Putuskan koneksi**.
 
+## Kenapa data rekan bisa tidak sinkron
+
+Tautan aplikasi (`https://laporin-psi.vercel.app/#/dashboard`) **tidak membawa koneksi**. Yang disimpan di
+`localStorage` tiap browser adalah: URL Web App + token (`laporin:koneksi`), nama/tim, dan salinan data mingguan.
+Akibatnya rekan yang membuka tautan itu di perangkat lain:
+
+- **sheet tetap terbaca** (ekspor CSV publik), jadi angka di dashboard tetap muncul, tetapi
+- perangkat itu **belum tersambung untuk menulis** — isian yang diketik tidak pernah masuk sheet (lencana
+  “Sinkron otomatis belum aktif”), dan isian lama di perangkat itu bisa menimpa tampilan sheet
+  (nilai lokal yang belum terkirim menang atas isi sheet saat penggabungan).
+
+Sejak versi ini ada tiga jalan agar semua perangkat tersambung:
+
+1. **Koneksi bawaan build** — isi Environment Variables `VITE_SCRIPT_URL` (URL `/exec`) dan `VITE_TOKEN`
+   di Vercel, lalu deploy ulang. Semua perangkat yang belum pernah menyambung (atau baru) otomatis
+   tersambung saat membuka tautan biasa. *Token ikut terbundel di berkas JS, jadi siapa pun yang punya
+   tautan aplikasi bisa menulis ke sheet — pakai token khusus dan bagikan tautan hanya ke tim.*
+2. **Tautan siap pakai** — menu **Sinkronisasi → Salin tautan siap pakai**, kirim ke rekan. Begitu dibuka,
+   perangkat mereka langsung tersambung (tanpa menekan tombol) dan token langsung dibersihkan dari address bar.
+3. **Manual** — isi URL `/exec` + token di menu **Sinkronisasi** sekali per perangkat.
+
+Perangkat yang sudah tersambung tidak pernah ditimpa oleh koneksi bawaan/tautan lain, dan tombol
+**Putuskan koneksi** tetap dihormati (ada penanda `putus` di `laporin:koneksi`). Bila perangkat belum
+tersambung, atau pembacaan sheet terakhir gagal, aplikasi menampilkan spanduk peringatan di atas halaman —
+data lama tidak lagi tampil tanpa penjelasan.
+
 Skrip membaca posisi kolom dari baris judul dan mencari baris berdasarkan **tim + tanggal**, sehingga aman
 bila ada baris/kolom yang disisipkan. Kolom lampiran dikenali dari judul kolomnya (cadangan: kolom pertama
 yang berisi tautan), jadi tab baru yang masih kosong tetap ditulisi di kolom yang benar. Setiap kiriman

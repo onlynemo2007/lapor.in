@@ -9,3 +9,5 @@ tsconfig.tsbuildinfo
 .uji/uji-isi-manual.mjs
 .uji/uji-dashboard.mjs
 .uji/uji-presensi-ui.mjs
+.uji/uji-koneksi-ui.mjs
+.uji/uji-koneksi-bawaan.mjs

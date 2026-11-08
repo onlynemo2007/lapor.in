@@ -3,6 +3,7 @@ import { useApp } from "../lib/store";
 import { SPREADSHEET_ID, rentangSetelahGeser, saranNamaMinggu, slotLabel, tanggalPendek, timById } from "../lib/model";
 import { APPS_SCRIPT, SCRIPT_VERSI, blokSalin } from "../lib/sheet";
 import { jamSinkron, waktuSinkron } from "../lib/sync";
+import { tautanSiapPakai } from "../lib/koneksi";
 import { Btn, Card, I, Pill, Spinner, cx, salin, useToast } from "../components/ui";
 import { StatusSinkron } from "../components/SyncBadge";
 import { StateGate } from "./common";
@@ -178,10 +179,11 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
     toast("Pengiriman dijalankan — lihat status di atas");
   };
 
-  const tautanSiapPakai = () => {
-    const isi = btoa(encodeURIComponent(JSON.stringify({ u: settings.scriptUrl, t: settings.token })));
-    return `${window.location.origin}${window.location.pathname}#/sinkron?setup=${encodeURIComponent(isi)}`;
-  };
+  const buatTautan = () =>
+    tautanSiapPakai(window.location.origin, window.location.pathname, {
+      scriptUrl: settings.scriptUrl,
+      token: settings.token,
+    });
 
   const dirtyList = Object.keys(week.dirty).map((dk) => {
     const [cat, ...rest] = dk.split(":");
@@ -737,14 +739,15 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
                 <div className="mt-4 rounded-xl border border-line p-3">
                   <p className="text-[12.5px] font-bold">Bagikan ke rekan setim</p>
                   <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">
-                    Kirim tautan ini agar perangkat rekan langsung ikut sinkron otomatis — tanpa mengisi apa pun. Tautan berisi
-                    token, jadi bagikan hanya ke tim internal.
+                    Kirim tautan ini ke rekan setim. Begitu dibuka, perangkat mereka <b>langsung tersambung</b> dan memakai
+                    sheet yang sama — tanpa mengisi apa pun. Tautan berisi token, jadi bagikan hanya ke tim internal.
+                    Perangkat yang belum pernah menyambung juga otomatis tersambung bila koneksi bawaan sudah diisi saat build.
                   </p>
                   <Btn
                     variant="ghost"
                     size="sm"
                     className="mt-2"
-                    onClick={() => doCopy("tautan", tautanSiapPakai(), "Tautan siap pakai tersalin")}
+                    onClick={() => doCopy("tautan", buatTautan(), "Tautan siap pakai tersalin")}
                   >
                     {copied === "tautan" ? <I.check className="h-3.5 w-3.5" /> : <I.link className="h-3.5 w-3.5" />}
                     {copied === "tautan" ? "Tersalin" : "Salin tautan siap pakai"}

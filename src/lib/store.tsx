@@ -17,6 +17,7 @@ import {
   TIMS,
 } from "./model";
 import { buatTabBaru, fetchWeek, kirimKeScript, mergeWeek, tesScript } from "./sheet";
+import { bacaKoneksiMentah, bersihkanTautan, dariTautan, koneksiBawaan, tentukanKoneksi } from "./koneksi";
 import { jumlahTertunda, siapkanKiriman, tandaiTerkirim, verifikasiKiriman, type SyncLog, type SyncState } from "./sync";
 
 export type Settings = {
@@ -59,19 +60,17 @@ const defaultSettings: Settings = {
 };
 
 /** Koneksi Apps Script tersimpan sendiri; null berarti belum pernah disimpan. */
-function bacaKoneksi(): { scriptUrl: string; token: string; autoSync?: boolean } | null {
+function bacaKoneksi() {
   try {
-    const raw = localStorage.getItem(KEY_KONEKSI);
-    if (!raw) return null;
-    const k = JSON.parse(raw) as { scriptUrl?: unknown; token?: unknown; autoSync?: unknown };
-    return {
-      scriptUrl: typeof k.scriptUrl === "string" ? k.scriptUrl : "",
-      token: typeof k.token === "string" ? k.token : "",
-      autoSync: typeof k.autoSync === "boolean" ? k.autoSync : undefined,
-    };
+    return bacaKoneksiMentah(localStorage.getItem(KEY_KONEKSI));
   } catch {
     return null;
   }
+}
+
+/** Koneksi bawaan build (Vercel Environment Variables) — dipakai perangkat yang belum tersambung. */
+function bawaanBuild() {
+  return koneksiBawaan(import.meta.env);
 }
 
 function load(): Persisted {
@@ -91,16 +90,15 @@ function load(): Persisted {
   } catch {
     /* data rusak — pakai bawaan, koneksi tetap dibaca di bawah */
   }
-  // Koneksi yang tersimpan terpisah selalu menang (termasuk saat sengaja dikosongkan)
-  const koneksi = bacaKoneksi();
-  if (koneksi) {
-    settings = {
-      ...settings,
-      scriptUrl: koneksi.scriptUrl,
-      token: koneksi.token,
-      autoSync: koneksi.autoSync ?? settings.autoSync,
-    };
-  }
+  // Koneksi tersimpan terpisah: menang bila ada; kalau perangkat ini belum pernah
+  // tersambung, koneksi bawaan build dipakai supaya rekan setim tidak perlu mengisi apa pun.
+  const koneksi = tentukanKoneksi(bacaKoneksi(), bawaanBuild());
+  settings = {
+    ...settings,
+    scriptUrl: koneksi.scriptUrl,
+    token: koneksi.token,
+    autoSync: koneksi.autoSync ?? settings.autoSync,
+  };
   return { v: 2, settings, weeks, trend, log };
 }
 
@@ -166,6 +164,8 @@ type Ctx = {
   reload: (gid?: string, senyap?: boolean) => Promise<boolean>;
   /** Waktu (ms) sheet terakhir berhasil dibaca ulang — dipakai pratinjau agar selalu data terbaru. */
   dibacaAt?: number;
+  /** Pembacaan sheet terakhir gagal (data yang tampil bisa lebih lama dari sheet). */
+  gagalBaca: { at: number; pesan: string } | null;
   /**
    * Buat tab minggu baru di spreadsheet: salinan struktur tab sumber,
    * isian mingguan kosong, tanggal digeser (default +7 hari).
@@ -207,22 +207,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [tautan, setTautan] = useState<TautanSiapPakai | null>(null);
   const [versiSkrip, setVersiSkrip] = useState("");
   const [dibacaAt, setDibacaAt] = useState<number>();
+  /** Gagal baca terakhir (mis. jaringan/Google menolak) — supaya data lama tidak tampil tanpa tanda. */
+  const [gagalBaca, setGagalBaca] = useState<{ at: number; pesan: string } | null>(null);
 
   const dataRef = useRef(data);
   dataRef.current = data;
+
+  /** Perangkat ini sengaja diputuskan dari Apps Script (koneksi bawaan tidak boleh memaksa masuk). */
+  const putusRef = useRef<boolean>(bacaKoneksi()?.putus === true);
 
   const sending = useRef(false);
   const again = useRef(false);
   const percobaan = useRef(0);
   const timer = useRef<number | null>(null);
   const runRef = useRef<(paksa?: boolean) => Promise<void>>(async () => {});
+  const reloadRef = useRef<(gid?: string, senyap?: boolean) => Promise<boolean>>(async () => false);
 
   useEffect(() => {
     // 1) Koneksi Apps Script disimpan lebih dulu (kecil, hampir tidak mungkin gagal)
     try {
+      const tersambung = !!(data.settings.scriptUrl && data.settings.token);
       localStorage.setItem(
         KEY_KONEKSI,
-        JSON.stringify({ scriptUrl: data.settings.scriptUrl, token: data.settings.token, autoSync: data.settings.autoSync }),
+        JSON.stringify({
+          scriptUrl: data.settings.scriptUrl,
+          token: data.settings.token,
+          autoSync: data.settings.autoSync,
+          putus: putusRef.current && !tersambung,
+        }),
       );
     } catch {
       /* penyimpanan penuh — data lain di bawah tetap dicoba */
@@ -500,36 +512,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /* -------------------------- pengaturan dari tautan -------------------------- */
 
-  useEffect(() => {
-    const h = window.location.hash;
-    const m = h.match(/[?&]setup=([^&]+)/);
-    if (!m) return;
-    try {
-      const j = JSON.parse(decodeURIComponent(atob(decodeURIComponent(m[1])))) as { u?: string; t?: string };
-      if (j.u && j.t) setTautan({ scriptUrl: String(j.u), token: String(j.t) });
-    } catch {
-      /* tautan rusak — abaikan */
-    }
-    const bersih = h.replace(/([?&])setup=[^&]*/, "$1").replace(/[?&]$/, "");
-    window.history.replaceState(null, "", bersih || "#/sinkron");
-  }, []);
-
-  const terapkanTautan = useCallback(() => {
-    if (!tautan) return;
+  const pasangKoneksi = useCallback((k: TautanSiapPakai) => {
+    putusRef.current = false;
     setData((d) => ({
       ...d,
       settings: {
         ...d.settings,
         // nilai lama tidak dihapus kalau tautan tidak membawa isian tersebut
-        scriptUrl: tautan.scriptUrl || d.settings.scriptUrl,
-        token: tautan.token || d.settings.token,
+        scriptUrl: k.scriptUrl || d.settings.scriptUrl,
+        token: k.token || d.settings.token,
         autoSync: true,
       },
     }));
-    setTautan(null);
     percobaan.current = 0;
+    // Kirim isian yang tertunda, lalu ambil isi sheet terbaru (perangkat ini baru bergabung).
     window.setTimeout(() => void runRef.current(true), 300);
-  }, [tautan]);
+    window.setTimeout(() => void reloadRef.current(undefined, true), 900);
+  }, []);
+
+  useEffect(() => {
+    const h = window.location.hash;
+    const k = dariTautan(h);
+    if (!k) return;
+    const st = dataRef.current.settings;
+    // Perangkat yang belum tersambung langsung memakai tautan ini — rekan cukup membuka tautan.
+    if (!st.scriptUrl || !st.token) pasangKoneksi(k);
+    else setTautan(k);
+    window.history.replaceState(null, "", bersihkanTautan(h));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const terapkanTautan = useCallback(() => {
+    if (!tautan) return;
+    pasangKoneksi(tautan);
+    setTautan(null);
+  }, [tautan, pasangKoneksi]);
 
   const buangTautan = useCallback(() => setTautan(null), []);
 
@@ -541,6 +558,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [data.settings.extraTabs]);
 
   const setSettings = useCallback((p: Partial<Settings>) => {
+    // Mengisi URL/token berarti perangkat ini kembali tersambung (batalkan penanda “putus”).
+    if (p.scriptUrl || p.token) putusRef.current = false;
     setData((d) => {
       const baru = { ...d.settings, ...p };
       // URL Web App & token yang sudah ada tidak boleh terhapus oleh nilai kosong.
@@ -553,6 +572,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /** Putus koneksi Apps Script di perangkat ini saja (sheet tidak diubah). */
   const putuskanKoneksi = useCallback(() => {
+    putusRef.current = true;
     setData((d) => ({ ...d, settings: { ...d.settings, scriptUrl: "", token: "" } }));
   }, []);
 
@@ -573,16 +593,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
           trend: { ...d.trend, [g]: { ...r, judul: tab.name } },
         }));
         setDibacaAt(Date.now());
+        setGagalBaca(null);
         if (!senyap) setLoadState({ status: "ok" });
         return true;
       } catch (e) {
-        // pembaruan senyap tidak boleh menutupi status pemuatan yang sudah baik
-        if (!senyap) setLoadState({ status: "error", error: e instanceof Error ? e.message : "Gagal memuat sheet." });
+        // pembaruan senyap tidak boleh menutupi status pemuatan yang sudah baik,
+        // tetapi kegagalannya tetap dicatat agar data lama tidak tampil tanpa tanda.
+        const pesan = e instanceof Error ? e.message : "Gagal memuat sheet.";
+        setGagalBaca({ at: Date.now(), pesan });
+        if (!senyap) setLoadState({ status: "error", error: pesan });
         return false;
       }
     },
     [tabs],
   );
+
+  useEffect(() => {
+    reloadRef.current = reload;
+  }, [reload]);
 
   /** Buat tab minggu baru di spreadsheet (lewat Apps Script), lalu buka tab itu. */
   const buatMingguBaru = useCallback(
@@ -694,6 +722,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loadState,
     reload,
     dibacaAt,
+    gagalBaca,
     buatMingguBaru,
     updateWeek,
     trend: data.trend,

@@ -3,6 +3,7 @@ import { useApp } from "../lib/store";
 import { SPREADSHEET_ID, TIMS } from "../lib/model";
 import { Btn, I, Logo, Spinner, cx } from "./ui";
 import { StatusSinkron } from "./SyncBadge";
+import { PeringatanKoneksi } from "./Koneksi";
 
 export type View = "dashboard" | "isi" | "presensi" | "keuangan" | "pratinjau" | "sinkron";
 
@@ -189,7 +190,10 @@ export default function Shell({ view, children }: { view: View; children: ReactN
         )}
       </header>
 
-      <main className="mx-auto max-w-[1180px] px-4 pb-28 pt-6 lg:px-8 lg:pb-12">{children}</main>
+      <main className="mx-auto max-w-[1180px] px-4 pb-28 pt-6 lg:px-8 lg:pb-12">
+        <PeringatanKoneksi className="mb-5" />
+        {children}
+      </main>
 
       {/* bottom nav (HP) */}
       <nav className="no-print fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
