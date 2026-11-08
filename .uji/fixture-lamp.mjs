@@ -56,6 +56,11 @@ class R {
   }
   getValue() { return this.sh.get(this.r, this.c); }
   getDisplayValue() { return display(this.sh.get(this.r, this.c)); }
+  /** tiruan getFormula: nilai yang diawali "=" dianggap rumus */
+  getFormula() {
+    const v = this.sh.get(this.r, this.c);
+    return typeof v === "string" && v.startsWith("=") ? v : "";
+  }
   setValue(v) { this.sh.set(this.r, this.c, v); return this; }
   clearContent() { for (let i = 0; i < this.nr; i++) for (let j = 0; j < this.nc; j++) this.sh.set(this.r + i, this.c + j, ""); return this; }
   getValues() { const o = []; for (let i = 0; i < this.nr; i++) { const row = []; for (let j = 0; j < this.nc; j++) row.push(this.sh.get(this.r + i, this.c + j)); o.push(row); } return o; }

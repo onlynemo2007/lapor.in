@@ -395,6 +395,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             return cur ? { ...d, weeks: { ...d.weeks, [k.gid]: tandaiTerkirim(cur, k, at) } } : d;
           });
           if (r.gagal?.length) gagalBaris.push(...r.gagal);
+          // sel berumus / angka 0 yang tidak ditimpa — informasikan, jangan diamkan
+          if (r.dilewati?.length) gagalBaris.push(...r.dilewati.map((x) => `${x} — tidak ditimpa`));
           catatLog({
             at,
             ok: true,

@@ -53,6 +53,30 @@ const semua = buildPayload({ ...week, dirty: {} }, "tok", "Uji", false);
 cek("kirim penuh memuat semua kode", semua.keuangan.length === 2, JSON.stringify(semua.keuangan));
 cek("uraian ikut terkirim", semua.keuangan[0].uraian === "Perjalanan dinas", JSON.stringify(semua.keuangan[0]));
 
+/* baris agregat yang terbaca 0 tidak boleh dikirim (jangan timpa rumus/angka sheet dengan 0) */
+{
+  const denganNol = {
+    ...week,
+    dirty: {},
+    anggaran: [
+      ...week.anggaran,
+      { kode: "032.12.691629", uraian: "Total", pagu: 0, realisasi: 0, baris: 6 },
+    ],
+  };
+  const kirimNol = buildPayload(denganNol, "tok", "Uji", false);
+  cek(
+    "baris berpagu & realisasi 0 tidak dikirim",
+    kirimNol.keuangan.length === 2 && !kirimNol.keuangan.some((x) => x.kode === "032.12.691629"),
+    JSON.stringify(kirimNol.keuangan),
+  );
+  const kirimNolSatu = buildPayload({ ...denganNol, dirty: { "R:032.12.691629": true } }, "tok", "Uji", true);
+  cek(
+    "kiriman bertanda pun tidak menulis 0 ke baris agregat",
+    kirimNolSatu.keuangan.length === 0,
+    JSON.stringify(kirimNolSatu.keuangan),
+  );
+}
+
 /* store: ubah satu baris */
 const baru = setKeuangan(week, "032.12.02", { realisasi: 33000000 }, "Uji");
 cek("realisasi berubah", baru.anggaran.find((a) => a.kode === "032.12.02").realisasi === 33000000, JSON.stringify(baru.anggaran));

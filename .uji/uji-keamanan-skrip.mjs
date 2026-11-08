@@ -254,6 +254,65 @@ const KOL_BUR = 4;
   cek("versi skrip belum terbaca tetap bisa disalin", mod.bolehSalinKode(false, "", undefined) === true);
 }
 
+/* ------- 9. sel berumus & angka 0 tidak menimpa isi sheet (bagian D) ------ */
+{
+  /** Tab dengan tabel Realisasi Anggaran: baris Total memakai rumus, baris program berisi angka. */
+  const isiKeuangan = () => {
+    const g = [];
+    const isi = (row, col, val) => {
+      while (g.length < row) g.push([]);
+      const r = g[row - 1];
+      while (r.length < col) r.push("");
+      r[col - 1] = val;
+    };
+    isi(1, 2, "LAPORAN MINGGU I BULAN NOVEMBER 2026");
+    isi(2, 2, "D");
+    isi(2, 3, "REALISASI KEUANGAN");
+    isi(4, 2, "Kode");
+    isi(4, 3, "Uraian");
+    isi(4, 4, "Pagu");
+    isi(4, 5, "Realisasi");
+    isi(5, 2, "032.12.691629");
+    isi(5, 3, "Total");
+    isi(5, 4, "=D6+D7"); // rumus penjumlahan baris program
+    isi(5, 5, "=E6+E7");
+    isi(6, 2, "032.12.DL");
+    isi(6, 3, "Program DL");
+    isi(6, 4, 3443148000);
+    isi(6, 5, 2548442545);
+    isi(7, 2, "032.12.WA");
+    isi(7, 3, "Program WA");
+    isi(7, 4, 7670590000);
+    isi(7, 5, 0);
+    return g;
+  };
+
+  const env = lingkunganDari(isiKeuangan());
+  const a = api(env);
+  const kirim = (baris) => post(a, { token: a.TOKEN, oleh: "Rani", gid: GID, keuangan: [baris] });
+
+  const total = kirim({ kode: "032.12.691629", uraian: "Total", pagu: 0, realisasi: 0 });
+  cek(
+    "sel berumus tidak ditimpa angka 0",
+    total.ok === true && (total.dilewati ?? []).length === 1 && String(env.sumber.get(5, 4)) === "=D6+D7",
+    JSON.stringify({ total, sel: env.sumber.get(5, 4) }),
+  );
+
+  const basi = kirim({ kode: "032.12.DL", uraian: "Program DL", pagu: 0, realisasi: 0 });
+  cek(
+    "angka 0 tidak menimpa nilai yang sudah ada",
+    basi.ok === true && (basi.dilewati ?? []).length >= 1 && Number(env.sumber.get(6, 4)) === 3443148000,
+    JSON.stringify({ basi, sel: env.sumber.get(6, 4) }),
+  );
+
+  const betul = kirim({ kode: "032.12.DL", uraian: "Program DL", pagu: 3500000000, realisasi: 2600000000 });
+  cek(
+    "nilai baru tetap ditulis",
+    betul.ok === true && Number(env.sumber.get(6, 4)) === 3500000000 && Number(env.sumber.get(6, 5)) === 2600000000,
+    JSON.stringify({ betul, sel: [env.sumber.get(6, 4), env.sumber.get(6, 5)] }),
+  );
+}
+
 const lulus = hasil.filter((h) => h.lulus).length;
 console.log(`\n${lulus}/${hasil.length} uji keamanan skrip lulus`);
 process.exit(lulus === hasil.length ? 0 : 1);

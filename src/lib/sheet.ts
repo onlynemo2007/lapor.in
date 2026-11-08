@@ -910,6 +910,9 @@ export function buildPayload(w: WeekData, token: string, oleh: string, hanyaBeru
   // bagian D: hanya baris yang diubah (atau semua saat kirim ulang penuh)
   w.anggaran.forEach((a) => {
     if (!a.kode) return;
+    // baris agregat yang kebaca kosong (pagu & realisasi 0) tidak dikirim: jangan menimpa
+    // angka/rumus di sheet dengan 0 hanya karena pembacaan belum lengkap.
+    if (!a.pagu && !a.realisasi) return;
     if (inc(`R:${a.kode}`))
       p.keuangan.push({ kode: a.kode, uraian: a.uraian, pagu: a.pagu, realisasi: a.realisasi, baris: a.baris });
   });
@@ -960,6 +963,8 @@ export type ScriptResult = {
   gagal?: string[];
   /** isian yang tidak ditulis karena selnya sudah diubah rekan (anti-timpa) */
   konflik?: string[];
+  /** sel yang sengaja tidak ditulis karena berisi rumus sheet atau akan ditimpa angka 0 */
+  dilewati?: string[];
   /** minggu itu sudah ditutup (baca-saja) */
   terkunci?: boolean;
   error?: string;
@@ -1451,7 +1456,7 @@ function doPost(e) {
     }
 
     const m = petakan(sh), k = m.col;
-    let n = 0; const gagal = []; const konflik = [];
+    let n = 0; const gagal = []; const konflik = []; const dilewati = [];
     const tulis = function (row, cols, vals, label) {
       if (!row) { gagal.push(label); return; }
       n += tulisBaris(sh, row, cols, vals);
@@ -1490,7 +1495,14 @@ function doPost(e) {
       if (!kode) { gagal.push('keuangan: kode kosong'); return; }
       const baris = m.Rkode[rapi(kode)];
       if (!baris) { gagal.push('keuangan ' + kode); return; }
-      n += tulisBaris(sh, baris, [k.rKode, k.rUr, k.rPagu, k.rReal], [kode, x.uraian, angkaNomor(x.pagu), angkaNomor(x.realisasi)]);
+      n += tulisBaris(sh, baris, [k.rKode, k.rUr], [kode, x.uraian]);
+      const lewPagu = tulisAngka(sh, baris, k.rPagu + 1, angkaNomor(x.pagu));
+      const lewReal = tulisAngka(sh, baris, k.rReal + 1, angkaNomor(x.realisasi));
+      n += (lewPagu ? 0 : 1) + (lewReal ? 0 : 1);
+      if (lewPagu || lewReal) {
+        const sebab = lewPagu === 'rumus' || lewReal === 'rumus' ? 'rumus sheet' : 'nilai 0';
+        dilewati.push('keuangan ' + kode + ' (' + sebab + ')');
+      }
     });
     (d.sel || []).forEach(function (x) {
       const baris = Number(x.baris), kolom = Number(x.kolom);
@@ -1500,6 +1512,8 @@ function doPost(e) {
         const labelSekarang = String(sh.getRange(baris, Number(x.labelKolom || 0) + 1).getDisplayValue() || '').trim();
         if (rapi(labelSekarang) !== rapi(x.label)) { gagal.push('baris ' + baris + ' bergeser'); return; }
       }
+      // sel berumus (mis. baris Jumlah) tidak ditimpa angka
+      if (berumus(sh, baris, kolom + 1)) { dilewati.push('sel ' + baris + ':' + kolom + ' (rumus sheet)'); return; }
       sh.getRange(baris, kolom + 1).setValue(nilaiSel(x.nilai));
       n += 1;
     });
@@ -1512,7 +1526,7 @@ function doPost(e) {
     });
 
     if (n) catat(sh, d.oleh, n, gagal.length);
-    return keluar({ ok: true, versi: VERSI, ditulis: n, gagal: gagal, konflik: konflik });
+    return keluar({ ok: true, versi: VERSI, ditulis: n, gagal: gagal, konflik: konflik, dilewati: dilewati });
   } catch (err) {
     return keluar({ ok: false, error: String(err) });
   } finally {
@@ -1563,6 +1577,27 @@ function tulisBaris(sh, row, cols, vals) {
   }
   siram();
   return n;
+}
+
+/** Sel berisi rumus (Total/Program dihitung formula sheet) — jangan ditimpa angka. */
+function berumus(sh, row, col) {
+  try { return String(sh.getRange(row, col).getFormula() || '') !== ''; } catch (e) { return false; }
+}
+
+/**
+ * Tulis angka ke satu sel keuangan dengan dua pengaman:
+ * - 'rumus'  : sel berisi rumus → dilewati (Total/Program tetap dihitung sheet)
+ * - 'basi'   : nilai yang dikirim 0 padahal sel sekarang berisi angka lain → dilewati
+ *              (pembacaan aplikasi belum lengkap; jangan hapus angka yang sudah ada)
+ */
+function tulisAngka(sh, row, col, nilai) {
+  if (berumus(sh, row, col)) return 'rumus';
+  if (!nilai) {
+    const kini = String(sh.getRange(row, col).getDisplayValue() || '').replace(/[^0-9-]/g, '');
+    if (kini && kini !== '0') return 'basi';
+  }
+  sh.getRange(row, col).setValue(nilai);
+  return '';
 }
 
 /** Membaca struktur tab: bagian A–C, posisi kolom, tim, sub (Program/Monev), dan tanggal. */
