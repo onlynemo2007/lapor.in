@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../lib/store";
 import { SPREADSHEET_ID, rentangSetelahGeser, saranNamaMinggu, slotLabel, tanggalPendek, timById } from "../lib/model";
-import { APPS_SCRIPT, SCRIPT_VERSI, blokSalin } from "../lib/sheet";
+import { APPS_SCRIPT, SCRIPT_VERSI, blokSalin, bolehSalinKode } from "../lib/sheet";
 import { jamSinkron, waktuSinkron } from "../lib/sync";
 import { tautanSiapPakai } from "../lib/koneksi";
 import { Btn, Card, I, Pill, Spinner, cx, salin, useToast } from "../components/ui";
@@ -92,6 +92,12 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
   const terpasang = !!settings.scriptUrl && !!settings.token;
   /** Mode admin: PIN sudah diverifikasi skrip di perangkat ini. */
   const admin = !!(settings.pinAdmin ?? "").trim();
+  /**
+   * Skrip di sheet belum v2.2 / belum punya PIN_ADMIN → PIN belum bisa diverifikasi,
+   * jadi mode admin belum mungkin dibuka. Dalam masa peralihan itu kode tetap boleh
+   * disalin supaya pengurus bisa memperbarui skrip (setelah itu kembali khusus admin).
+   */
+  const bolehSalinSkrip = bolehSalinKode(admin, versiSkrip, skripInfo?.adaPin);
   const tautanSama = !!tautan && tautan.scriptUrl === settings.scriptUrl && tautan.token === settings.token;
   const urlValid = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec/.test(settings.scriptUrl);
   const sheetUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit#gid=${week.gid}`;
@@ -712,8 +718,8 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
               <Btn variant="ghost" size="sm" onClick={() => setBukaKode((v) => !v)}>
                 {bukaKode ? "Sembunyikan" : "Lihat kode"}
               </Btn>
-              {/* Kode yang disalin memuat token asli → hanya admin. */}
-              {admin && (
+              {/* Kode disalin memuat token asli → khusus admin, kecuali masa peralihan ke v2.2. */}
+              {bolehSalinSkrip && (
                 <Btn
                   variant={copied === "script" ? "brand" : "primary"}
                   size="sm"
@@ -741,7 +747,19 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
               baru → Deploy</b>. URL <code className="rounded bg-paper px-1 font-mono">/exec</code> tidak berubah, jadi tidak perlu
               mengisi ulang apa pun di aplikasi.
             </p>
+            <p>
+              <b className="text-ink">Lalu isi PIN admin:</b> di halaman Apps Script buka{" "}
+              <b className="text-ink">Project Settings → Script Properties → Add script property</b>, nama{" "}
+              <code className="rounded bg-paper px-1 font-mono">PIN_ADMIN</code>, nilai = PIN pilihan Anda. Tanpa ini mode admin
+              tidak bisa dibuka dan pengaturan koneksi tetap terkunci.
+            </p>
             {settings.token && <p>Kode yang disalin sudah berisi token Anda.</p>}
+            {!admin && bolehSalinSkrip && (
+              <p>
+                Salin kode dibuka sementara karena skrip di spreadsheet belum v{SCRIPT_VERSI}. Setelah skrip diperbarui dan{" "}
+                <code className="rounded bg-paper px-1 font-mono">PIN_ADMIN</code> diisi, tombol ini kembali khusus mode admin.
+              </p>
+            )}
           </div>
         </div>
 

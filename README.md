@@ -125,14 +125,18 @@ jadi tidak bisa dilewati dari tampilan:
 | **Batas kiriman** | Maksimal 400 sel per kiriman, 60 kiriman / 5 menit, 5 baris baru per kiriman. |
 | **Anti-timpa** | Aplikasi mengirim teks sel saat terakhir dibaca; bila isi sheet sudah diubah rekan, skrip **menolak menimpa**, aplikasi memberi tahu dan memuat ulang dari sheet. |
 
-Penyiapan setelah memperbarui ke v2.2:
+Penyiapan setelah memperbarui ke v2.2 (urutan ini penting — PIN diverifikasi oleh skrip):
 
-1. **Sinkronisasi → Mode admin**: masukkan PIN admin (diverifikasi skrip) untuk membuka pengaturan
-   koneksi, tautan siap pakai, minggu baru, dan kirim ulang seluruh isian. Token kini tampil tersamar.
+1. **Sinkronisasi → Koneksi → Salin kode**, tempel di Apps Script, lalu
+   **Terapkan → Kelola deployment → Edit → Versi baru** (URL `/exec` tidak berubah).
+   Selama skrip di sheet belum v2.2 (atau `PIN_ADMIN` belum diisi), tombol *Salin kode* sengaja
+   tetap terbuka untuk semua pengguna supaya pengurus tidak terkunci di luar; setelah itu tombol
+   kembali khusus mode admin.
 2. Di Apps Script: **Project Settings (ikon gear) → Script Properties → Add**:
-   - `PIN_ADMIN` = kode rahasia admin (wajib untuk fitur admin)
+   - `PIN_ADMIN` = kode rahasia admin (wajib; tanpa ini mode admin tidak bisa dibuka)
    - `MINGGU_BUKA` = daftar gid yang dibuka kembali, dipisah koma (dibuat otomatis oleh tombol admin)
-3. **Terapkan → Kelola deployment → Edit → Versi baru** (URL `/exec` tidak berubah).
+3. **Sinkronisasi → Mode admin**: masukkan PIN admin (diverifikasi skrip) untuk membuka pengaturan
+   koneksi, tautan siap pakai, minggu baru, dan kirim ulang seluruh isian. Token kini tampil tersamar.
 
 Bila skrip masih v2.1, aplikasi tetap berjalan seperti biasa; hanya fitur pengamanan di atas yang belum aktif
 dan aplikasi menampilkan pengingat untuk memperbarui kode.

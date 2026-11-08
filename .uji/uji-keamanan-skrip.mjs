@@ -243,6 +243,17 @@ const KOL_BUR = 4;
   cek("token salah ditolak", r.ok === false && /Token tidak cocok/.test(r.error), JSON.stringify(r));
 }
 
+/* ------------- 8. penyalinan kode skrip saat masa peralihan ------------- */
+{
+  // jalur tidak ditulis sebagai literal supaya esbuild tidak ikut membundelnya
+  const mod = await import(process.env.SHEET_MOD || "/tmp/sheet.mjs");
+  cek("admin selalu boleh menyalin kode", mod.bolehSalinKode(true, "2.2", true) === true);
+  cek("pegawai tidak boleh menyalin kode bila skrip sudah v2.2 + PIN", mod.bolehSalinKode(false, "2.2", true) === false);
+  cek("masa peralihan: skrip lama tetap bisa disalin", mod.bolehSalinKode(false, "2.1", undefined) === true);
+  cek("masa peralihan: v2.2 tanpa PIN_ADMIN tetap bisa disalin", mod.bolehSalinKode(false, "2.2", false) === true);
+  cek("versi skrip belum terbaca tetap bisa disalin", mod.bolehSalinKode(false, "", undefined) === true);
+}
+
 const lulus = hasil.filter((h) => h.lulus).length;
 console.log(`\n${lulus}/${hasil.length} uji keamanan skrip lulus`);
 process.exit(lulus === hasil.length ? 0 : 1);

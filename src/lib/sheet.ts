@@ -1107,6 +1107,18 @@ export async function tesScript(url: string): Promise<SkripInfo> {
   }
 }
 
+/**
+ * Boleh menyalin kode skrip?
+ * Khusus admin, kecuali masa peralihan: skrip di sheet belum v2.2 atau belum punya
+ * PIN_ADMIN, sehingga mode admin belum mungkin dibuka tetapi skrip tetap harus bisa
+ * diperbarui (kalau tidak, pengurus terkunci di luar).
+ */
+export function bolehSalinKode(admin: boolean, versiSkrip: string, adaPin?: boolean): boolean {
+  if (admin) return true;
+  if (adaPin === false) return true;
+  return !versiSkrip || versiSkrip !== SCRIPT_VERSI;
+}
+
 /** Tanyakan ke skrip apakah PIN admin ini benar (PIN tidak pernah disimpan di skrip). */
 export async function cekPin(url: string, pin: string): Promise<{ ok: boolean; adaPin?: boolean; error?: string }> {
   const ctrl = new AbortController();
