@@ -152,6 +152,18 @@ cek("nomor baris tetap dari sheet", gabung.anggaran.every((a) => typeof a.baris 
     t2.pagu === 300 && t2.realisasi === 120,
     JSON.stringify({ t2, rows: tanpaTotal.anggaran.map((a) => [a.kode, a.pagu]) }),
   );
+
+  const totalNol = parseWeek(
+    csvInduk.replace(",032.12.691629,Total,300,120", ",032.12.691629,Total,0,0"),
+    "9",
+    "Nov I",
+  );
+  const t3 = totalAnggaran(totalNol.anggaran);
+  cek(
+    "baris Total yang 0 tidak dipakai — jatuh ke jumlah rincian",
+    t3.pagu === 300 && t3.realisasi === 120,
+    JSON.stringify({ t3, rows: totalNol.anggaran.map((a) => [a.kode, a.pagu]) }),
+  );
 }
 
 const lulus = hasil.filter((h) => h.lulus).length;

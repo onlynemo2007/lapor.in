@@ -130,7 +130,8 @@ export const totalAnggaran = (arr: Anggaran[]) => {
   const jumlah = (rows: Anggaran[]) =>
     rows.reduce((t, a) => ({ pagu: t.pagu + a.pagu, realisasi: t.realisasi + a.realisasi }), { pagu: 0, realisasi: 0 });
   const total = arr.find((a) => /^total$/i.test(a.uraian.trim()));
-  if (total) return { pagu: total.pagu, realisasi: total.realisasi };
+  /** baris Total yang sudah 0 semua dianggap rusak/kosong — jangan sampai total dashboard jadi Rp0 */
+  if (total && (total.pagu > 0 || total.realisasi > 0)) return { pagu: total.pagu, realisasi: total.realisasi };
   const induk = kodeInduk(arr);
   const daun = arr.filter((a) => !induk.has(a.kode));
   return jumlah(daun.length ? daun : arr);
