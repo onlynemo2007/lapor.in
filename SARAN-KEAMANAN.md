@@ -2,6 +2,12 @@
 
 Ditulis 5 November 2026 · untuk Tim Dukman (PSSSDMKP) · aplikasi Lapor.in
 
+> **Status: Paket 2 + bagian tampilan Paket 1 sudah dikerjakan** (skrip v2.2, commit menyusul di
+> riwayat git). Yang aktif sekarang: kunci minggu otomatis berbasis judul tab, PIN admin diverifikasi
+> skrip, nama pengisi wajib, batas ukuran/frekuensi kiriman, anti-timpa per sel (kegiatan & rencana),
+> dan pemisahan menu Sinkronisasi (token tersamar, aksi berisiko di balik mode admin). Paket 3
+> (kode akses per pegawai) belum dikerjakan.
+
 ## Ringkasan
 
 - **Jangan batasi jam input.** Yang lebih tepat dibatasi adalah **periode (minggu)**, **identitas penginput**, dan **tumpang-tindih tulisan** — bukan pukul berapa orang mengetik.

@@ -64,12 +64,15 @@ cek("baris tabel sesuai sheet", sisa?.baris.length === 1 && sisa.baris[0].sel[3]
 /* --- skrip menulis ke baris yang dikirim aplikasi (bukan tabel lain) --- */
 {
   const env = lingkunganDari(grid());
-  const api = new Function("SpreadsheetApp", "LockService", "ContentService", `${kode}\nreturn { doPost: doPost, TOKEN: TOKEN };`)(
+  const api = new Function("SpreadsheetApp", "LockService", "ContentService", "PropertiesService", "CacheService", `${kode}\nreturn { doPost: doPost, TOKEN: TOKEN };`)(
     env.SpreadsheetApp,
     env.LockService,
     env.ContentService,
+    env.PropertiesService,
+    env.CacheService,
   );
-  const post = (isi) => JSON.parse(api.doPost({ postData: { contents: JSON.stringify(isi) } }).getContent());
+  // Skrip v2.2 mewajibkan nama pengisi ("oleh").
+  const post = (isi) => JSON.parse(api.doPost({ postData: { contents: JSON.stringify({ oleh: "Uji", ...isi }) } }).getContent());
 
   const r = post({
     token: api.TOKEN,

@@ -55,12 +55,16 @@ cek("sel yang sudah terkirim mengikuti sheet", !("6:3" in bersih.selKeuangan), J
 
 /* ---------------- skrip menulis sel ---------------- */
 const api = (env) =>
-  new Function("SpreadsheetApp", "LockService", "ContentService", `${kode}\nreturn { doPost: doPost, TOKEN: TOKEN, VERSI: VERSI };`)(
+  new Function("SpreadsheetApp", "LockService", "ContentService", "PropertiesService", "CacheService", `${kode}\nreturn { doPost: doPost, TOKEN: TOKEN, VERSI: VERSI };`)(
     env.SpreadsheetApp,
     env.LockService,
     env.ContentService,
+    env.PropertiesService,
+    env.CacheService,
   );
-const post = (a, isi) => JSON.parse(a.doPost({ postData: { contents: JSON.stringify(isi) } }).getContent());
+/* Skrip v2.2 mewajibkan nama pengisi ("oleh") — beri nama uji bila payload belum memuatnya. */
+const post = (a, isi) =>
+  JSON.parse(a.doPost({ postData: { contents: JSON.stringify({ oleh: "Uji", ...isi }) } }).getContent());
 
 {
   const env = lingkunganDari(grid());

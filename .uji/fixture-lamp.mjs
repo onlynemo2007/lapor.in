@@ -126,6 +126,27 @@ class SS {
 }
 
 /** Lingkungan dengan isi tab bebas (dipakai untuk uji bagian lain, mis. realisasi keuangan). */
+/** PropertiesService tiruan (PIN admin & daftar minggu dibuka) + CacheService (batas kirim). */
+function propertiTiruan() {
+  const isi = new Map();
+  return {
+    isi,
+    getProperty: (k) => (isi.has(k) ? isi.get(k) : null),
+    setProperty: (k, v) => { isi.set(k, String(v)); },
+    deleteProperty: (k) => { isi.delete(k); },
+  };
+}
+
+function cacheTiruan() {
+  const isi = new Map();
+  return {
+    isi,
+    get: (k) => (isi.has(k) ? isi.get(k) : null),
+    put: (k, v) => { isi.set(k, String(v)); },
+    remove: (k) => { isi.delete(k); },
+  };
+}
+
 export function lingkunganDari(isiGrid, nama = "Nov I") {
   const ss = new SS();
   const sumber = new Sheet(ss, nama, isiGrid);
@@ -134,11 +155,15 @@ export function lingkunganDari(isiGrid, nama = "Nov I") {
   audit.hidden = true;
   ss.sheets.push(sumber, audit);
   ss.aktif = sumber;
+  const properti = propertiTiruan();
+  const cache = cacheTiruan();
   return {
-    ss, sumber,
+    ss, sumber, properti, cache,
     SpreadsheetApp: { getActiveSpreadsheet: () => ss },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
     ContentService: { MimeType: { JSON: "json" }, createTextOutput: (s) => ({ setMimeType() { return this; }, getContent: () => s }) },
+    PropertiesService: { getScriptProperties: () => properti, getDocumentProperties: () => properti },
+    CacheService: { getScriptCache: () => cache },
   };
 }
 
@@ -150,10 +175,14 @@ export function lingkungan(linkSel) {
   audit.hidden = true;
   ss.sheets.push(sumber, audit);
   ss.aktif = sumber;
+  const properti = propertiTiruan();
+  const cache = cacheTiruan();
   return {
-    ss, sumber,
+    ss, sumber, properti, cache,
     SpreadsheetApp: { getActiveSpreadsheet: () => ss },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
     ContentService: { MimeType: { JSON: "json" }, createTextOutput: (s) => ({ setMimeType() { return this; }, getContent: () => s }) },
+    PropertiesService: { getScriptProperties: () => properti, getDocumentProperties: () => properti },
+    CacheService: { getScriptCache: () => cache },
   };
 }

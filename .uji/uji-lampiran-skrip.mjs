@@ -9,13 +9,17 @@ const cek = (nama, lulus, info = "") => {
 };
 
 const api = (env) =>
-  new Function("SpreadsheetApp", "LockService", "ContentService", `${kode}\nreturn { doPost: doPost, TOKEN: TOKEN, VERSI: VERSI };`)(
+  new Function("SpreadsheetApp", "LockService", "ContentService", "PropertiesService", "CacheService", `${kode}\nreturn { doPost: doPost, TOKEN: TOKEN, VERSI: VERSI };`)(
     env.SpreadsheetApp,
     env.LockService,
     env.ContentService,
+    env.PropertiesService,
+    env.CacheService,
   );
 
-const post = (a, isi) => JSON.parse(a.doPost({ postData: { contents: JSON.stringify(isi) } }).getContent());
+/* Skrip v2.2 mewajibkan nama pengisi ("oleh") — beri nama uji bila payload belum memuatnya. */
+const post = (a, isi) =>
+  JSON.parse(a.doPost({ postData: { contents: JSON.stringify({ oleh: "Uji", ...isi }) } }).getContent());
 
 /* baris tim Keuangan = 4..8 (2,3,4,5,6 November 2026) */
 const R2 = 4, R3 = 5, R4 = 6, R5 = 7, R6 = 8;
@@ -32,7 +36,7 @@ const D = "https://drive.google.com/file/d/DDD/view";
 {
   const env = lingkungan("");
   const a = api(env);
-  cek("versi skrip terbaru", a.VERSI === "2.1", a.VERSI);
+  cek("versi skrip terbaru", a.VERSI === "2.2", a.VERSI);
 
   const r = kirim(a, "3 november 2026", `3 November 2026: ${A}`, { gabung: true });
   cek("kiriman diterima", r.ok === true && r.ditulis >= 1 && r.gagal.length === 0, JSON.stringify(r));
@@ -100,11 +104,19 @@ const D = "https://drive.google.com/file/d/DDD/view";
   cek("payload tanpa tanggal ditulis di baris pertama tim", String(env.sumber.get(R2, 11)).includes(A) && r.ok === true, String(env.sumber.get(R2, 11)));
 }
 
-/* ---------- 5. buatTab v1.6 tetap benar ---------- */
+/* ---------- 5. buatTab v1.6 tetap benar (v2.2: butuh PIN admin) ---------- */
 {
   const env = lingkungan(`2 November 2026: ${LAMA}`);
   const a = api(env);
-  const r = post(a, { token: a.TOKEN, aksi: "buatTab", sumberGid: GID, nama: "Nov II", geserHari: 7 });
+  // Tanpa PIN admin di Script Properties → ditolak
+  const tanpaPin = post(a, { token: a.TOKEN, aksi: "buatTab", sumberGid: GID, nama: "Nov IX", geserHari: 7 });
+  cek("buatTab ditolak tanpa PIN admin", tanpaPin.ok === false && /PIN admin/.test(tanpaPin.error), JSON.stringify(tanpaPin));
+  // PIN salah → ditolak
+  env.properti.setProperty("PIN_ADMIN", "rahasia-admin");
+  const pinSalah = post(a, { token: a.TOKEN, pin: "salah", aksi: "buatTab", sumberGid: GID, nama: "Nov IX", geserHari: 7 });
+  cek("buatTab ditolak bila PIN salah", pinSalah.ok === false && /PIN admin salah/.test(pinSalah.error), JSON.stringify(pinSalah));
+
+  const r = post(a, { token: a.TOKEN, pin: "rahasia-admin", aksi: "buatTab", sumberGid: GID, nama: "Nov II", geserHari: 7 });
   const baru = env.ss.getSheetByName("Nov II");
   cek("buatTab ok", r.ok === true && !!baru, JSON.stringify(r));
   cek("tab baru: sel link dikosongkan", String(baru.get(4, 11)).trim() === "", String(baru.get(4, 11)));

@@ -17,6 +17,26 @@ export function pakaiStatusSinkron() {
       retry: false,
     };
 
+  if (syncState.status === "nama")
+    return {
+      tone: "warn" as const,
+      label: "Isi nama dulu agar terkirim",
+      pendek: "Isi nama",
+      judul: syncState.pesan ?? "Isian belum dikirim karena nama pengisi masih kosong.",
+      aksi: "nama" as const,
+      retry: false,
+    };
+
+  if (syncState.status === "konflik")
+    return {
+      tone: "bad" as const,
+      label: `Sel diubah rekan — ${pendingCount ? `${pendingCount} menunggu` : "muat ulang"}`,
+      pendek: "Bentrok",
+      judul: syncState.pesan ?? "Beberapa isian tidak dikirim karena selnya sudah diubah rekan.",
+      aksi: "retry" as const,
+      retry: true,
+    };
+
   if (!settings.autoSync)
     return {
       tone: "muted" as const,
@@ -111,6 +131,13 @@ export function StatusSinkron({ className = "", ringkas = false }: { className?:
       <button onClick={() => void syncNow()} className={gaya} title={judul}>
         {isi}
       </button>
+    );
+
+  if (s.aksi === "nama")
+    return (
+      <a href="#/sinkron" className={gaya} title={judul}>
+        {isi}
+      </a>
     );
 
   if (s.aksi === "setup")

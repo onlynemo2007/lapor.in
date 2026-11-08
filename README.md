@@ -111,6 +111,32 @@ bila ada baris/kolom yang disisipkan. Kolom lampiran dikenali dari judul kolomny
 yang berisi tautan), jadi tab baru yang masih kosong tetap ditulisi di kolom yang benar. Setiap kiriman
 dicatat di tab tersembunyi `_audit`.
 
+## Pengamanan (Apps Script v2.2)
+
+Isian tetap boleh dikirim kapan saja (pagi, malam, akhir pekan) — yang dibatasi adalah **periode**,
+**identitas**, dan **tumpang-tindih tulisan**, bukan jam. Semua aturan di bawah ditegakkan **di skrip**,
+jadi tidak bisa dilewati dari tampilan:
+
+| Aturan | Perilaku |
+|---|---|
+| **Minggu lama terkunci** | Hanya tab minggu **terbaru** yang bisa ditulisi. Urutan ditentukan dari **judul** tab (`LAPORAN MINGGU II BULAN NOVEMBER 2026`), bukan posisi tab. Minggu lama bisa dibuka admin untuk koreksi. |
+| **Nama pengisi wajib** | Kiriman tanpa nama (≥ 2 huruf) ditolak; nama masuk ke tab `_audit`. |
+| **Aksi berisiko = admin** | `buatTab`, buka/kunci minggu, dan "kirim ulang seluruh isian" butuh **PIN admin** yang disetel di Script Properties (`PIN_ADMIN`), bukan di kode. |
+| **Batas kiriman** | Maksimal 400 sel per kiriman, 60 kiriman / 5 menit, 5 baris baru per kiriman. |
+| **Anti-timpa** | Aplikasi mengirim teks sel saat terakhir dibaca; bila isi sheet sudah diubah rekan, skrip **menolak menimpa**, aplikasi memberi tahu dan memuat ulang dari sheet. |
+
+Penyiapan setelah memperbarui ke v2.2:
+
+1. **Sinkronisasi → Mode admin**: masukkan PIN admin (diverifikasi skrip) untuk membuka pengaturan
+   koneksi, tautan siap pakai, minggu baru, dan kirim ulang seluruh isian. Token kini tampil tersamar.
+2. Di Apps Script: **Project Settings (ikon gear) → Script Properties → Add**:
+   - `PIN_ADMIN` = kode rahasia admin (wajib untuk fitur admin)
+   - `MINGGU_BUKA` = daftar gid yang dibuka kembali, dipisah koma (dibuat otomatis oleh tombol admin)
+3. **Terapkan → Kelola deployment → Edit → Versi baru** (URL `/exec` tidak berubah).
+
+Bila skrip masih v2.1, aplikasi tetap berjalan seperti biasa; hanya fitur pengamanan di atas yang belum aktif
+dan aplikasi menampilkan pengingat untuk memperbarui kode.
+
 ## Pengembangan
 
 ```bash

@@ -330,6 +330,7 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
     tabelKeuangan: [],
     selKeuangan: {},
     rows: { A: {}, L: {}, B: {}, C: {}, P: {} },
+    asli: {},
     dirty: {},
     meta: {},
     importedAt: Date.now(),
@@ -520,6 +521,7 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
       if (!w.dates.some((x) => norm(x) === norm(tgl))) w.dates.push(tgl);
       const k = slotKey(tim, sub, tgl);
       w.rows.A[k] = sheetRow;
+      w.asli!["A:" + k] = U;
       const items = splitUraian(U);
       if (items.length) w.kegiatan[k] = items;
       const lk = lampKey(tim, sub);
@@ -530,6 +532,7 @@ export function parseWeek(csv: string, gid: string, tab: string): WeekData {
         const id = timIdDari(T);
         if (id) {
           w.rows.B[id] = sheetRow;
+          w.asli!["B:" + id] = String(r[c.bUr] ?? "");
           const items = splitUraian(r[c.bUr] ?? "");
           if (items.length) w.rencana[id] = items;
         }
@@ -785,10 +788,14 @@ export type Payload = {
   token: string;
   gid: string;
   oleh: string;
-  kegiatan: { tim: string; sub: string; tanggal: string; uraian: string }[];
+  /** PIN admin — hanya untuk aksi yang butuh hak admin (buatTab, kirim ulang semua). */
+  pin?: string;
+  /** true = menulis ulang SELURUH tab (pemulihan) — hanya admin. */
+  penuh?: boolean;
+  kegiatan: { tim: string; sub: string; tanggal: string; uraian: string; lama?: string }[];
   /** satu entri per tanggal: skrip menuliskannya ke baris tanggal itu */
   lampiran: { tim: string; sub: string; tanggal: string; url: string; gabung?: boolean }[];
-  rencana: { tim: string; uraian: string }[];
+  rencana: { tim: string; uraian: string; lama?: string }[];
   presensi: { tanggal: string; idx: number; nilai: string[] }[];
   aplikasi: { tanggal: string; idx: number; nilai: string[] }[];
   /** bagian D — realisasi keuangan per kode kegiatan */
@@ -868,8 +875,17 @@ export function buildPayload(w: WeekData, token: string, oleh: string, hanyaBeru
     w.dates.forEach((d) => {
       const k = slotKey(tim.id, sub, d);
       const items = w.kegiatan[k] ?? [];
-      if (inc(`A:${k}`) && (items.length || hanyaBerubah))
-        p.kegiatan.push({ tim: tim.id, sub: norm(sub), tanggal: norm(d), uraian: joinUraian(items) });
+      if (inc(`A:${k}`) && (items.length || hanyaBerubah)) {
+        // `lama` = isi sel saat terakhir dibaca; skrip menolak menimpa bila sudah diubah rekan.
+        const lama = w.asli?.[`A:${k}`];
+        p.kegiatan.push({
+          tim: tim.id,
+          sub: norm(sub),
+          tanggal: norm(d),
+          uraian: joinUraian(items),
+          ...(lama === undefined ? {} : { lama }),
+        });
+      }
     });
     const lk = lampKey(tim.id, sub);
     // tautan dikirim PER TANGGAL: tiap tanggal ditulis ke barisnya sendiri di kolom lampiran
@@ -886,7 +902,10 @@ export function buildPayload(w: WeekData, token: string, oleh: string, hanyaBeru
   });
   TIMS.forEach((t) => {
     const items = w.rencana[t.id] ?? [];
-    if (inc(`B:${t.id}`) && (items.length || hanyaBerubah)) p.rencana.push({ tim: t.id, uraian: joinUraian(items) });
+    if (inc(`B:${t.id}`) && (items.length || hanyaBerubah)) {
+      const lama = w.asli?.[`B:${t.id}`];
+      p.rencana.push({ tim: t.id, uraian: joinUraian(items), ...(lama === undefined ? {} : { lama }) });
+    }
   });
   // bagian D: hanya baris yang diubah (atau semua saat kirim ulang penuh)
   w.anggaran.forEach((a) => {
@@ -939,6 +958,10 @@ export type ScriptResult = {
   ok: boolean;
   ditulis?: number;
   gagal?: string[];
+  /** isian yang tidak ditulis karena selnya sudah diubah rekan (anti-timpa) */
+  konflik?: string[];
+  /** minggu itu sudah ditutup (baca-saja) */
+  terkunci?: boolean;
   error?: string;
   versi?: string;
   verified: boolean;
@@ -995,7 +1018,7 @@ export async function kirimKeScript(url: string, payload: Payload, batasMs = 250
 }
 
 /** Versi kode Apps Script yang disalin dari aplikasi (harus sama dengan `VERSI` di skrip). */
-export const SCRIPT_VERSI = "2.1";
+export const SCRIPT_VERSI = "2.2";
 
 export type BuatTabResult = {
   ok: boolean;
@@ -1020,8 +1043,9 @@ export async function buatTabBaru(
   nama: string,
   geserHari: number,
   oleh = "",
+  pin = "",
 ): Promise<BuatTabResult> {
-  const body = JSON.stringify({ token, aksi: "buatTab", sumberGid, nama, geserHari, oleh });
+  const body = JSON.stringify({ token, aksi: "buatTab", sumberGid, nama, geserHari, oleh, pin });
   const ctrl = new AbortController();
   const jam = setTimeout(() => ctrl.abort(), 60000);
   try {
@@ -1059,12 +1083,78 @@ export async function buatTabBaru(
   }
 }
 
-export async function tesScript(url: string): Promise<{ ok: boolean; nama?: string; tabs?: { name: string; gid: string }[]; versi?: string }> {
+export type SkripInfo = {
+  ok: boolean;
+  nama?: string;
+  tabs?: { name: string; gid: string }[];
+  versi?: string;
+  /** gid minggu terbaru — tab lain dianggap sudah ditutup (baca-saja) */
+  terbaru?: string;
+  /** gid minggu lama yang dibuka kembali oleh admin */
+  dibuka?: string[];
+  /** apakah PIN admin sudah disetel di skrip */
+  adaPin?: boolean;
+};
+
+export async function tesScript(url: string): Promise<SkripInfo> {
   const ctrl = new AbortController();
   const jam = setTimeout(() => ctrl.abort(), 15000);
   try {
     const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}aksi=ping`, { redirect: "follow", signal: ctrl.signal });
     return await res.json();
+  } finally {
+    clearTimeout(jam);
+  }
+}
+
+/** Tanyakan ke skrip apakah PIN admin ini benar (PIN tidak pernah disimpan di skrip). */
+export async function cekPin(url: string, pin: string): Promise<{ ok: boolean; adaPin?: boolean; error?: string }> {
+  const ctrl = new AbortController();
+  const jam = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const q = `aksi=pin&pin=${encodeURIComponent(pin)}`;
+    const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}${q}`, { redirect: "follow", signal: ctrl.signal });
+    const data = (await res.json()) as { ok?: boolean; adaPin?: boolean };
+    // Skrip lama (v2.1) menjawab semua permintaan dengan ok:true dan tanpa `adaPin`,
+    // jadi PIN hanya diterima bila balasannya benar-benar dari fitur PIN (v2.2).
+    return { ok: data.ok === true && data.adaPin === true, adaPin: data.adaPin };
+  } catch {
+    return { ok: false, error: "Tidak bisa memeriksa PIN ke Apps Script." };
+  } finally {
+    clearTimeout(jam);
+  }
+}
+
+export type HasilMinggu = { ok: boolean; terbaru?: string; dibuka?: string[]; error?: string };
+
+/** Buka / kunci kembali satu minggu (khusus admin, diverifikasi skrip). */
+export async function aturMinggu(
+  url: string,
+  token: string,
+  pin: string,
+  gid: string,
+  buka: boolean,
+): Promise<HasilMinggu> {
+  const body = JSON.stringify({ token, pin, aksi: buka ? "bukaMinggu" : "kunciMinggu", gid });
+  const ctrl = new AbortController();
+  const jam = setTimeout(() => ctrl.abort(), 25000);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      body,
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      redirect: "follow",
+      signal: ctrl.signal,
+    });
+    const teks = await res.text();
+    try {
+      return JSON.parse(teks) as HasilMinggu;
+    } catch {
+      throw new Error(`Balasan skrip tidak dapat dibaca. Perbarui Apps Script ke v${SCRIPT_VERSI} lalu coba lagi.`);
+    }
+  } catch (e) {
+    if (e instanceof Error && /Balasan skrip/.test(e.message)) throw e;
+    throw new Error("Tidak bisa menghubungi Apps Script. Periksa URL Web App & koneksi internet.");
   } finally {
     clearTimeout(jam);
   }
@@ -1100,9 +1190,141 @@ export const APPS_SCRIPT = `/**
  * v2.1 kolom tabel penggunaan aplikasi presensi dibaca dari satu baris judul yang
  * sama (Tanggal + Sikepo + e-Presensi + Finger Print), jadi angkanya tidak lagi
  * tertukar kolom.
+ * v2.2 pengamanan: nama pengisi wajib, batas ukuran & frekuensi kiriman, minggu lama
+ * otomatis terkunci (baca-saja), aksi berisiko (buat tab, kirim ulang penuh) butuh PIN
+ * admin dari Script Properties, dan tulisan tidak menimpa isian yang sudah diubah rekan.
+ *
+ * PIN admin TIDAK ditulis di kode ini (kode ini disalin-tempel & bisa dibaca siapa saja):
+ *   Apps Script → ikon gear (Project Settings) → Script Properties → Add:
+ *     PIN_ADMIN   = kode rahasia admin (mis. 6–12 huruf/angka)
+ *   Opsional:
+ *     MINGGU_BUKA = daftar gid tab yang dibuka kembali, dipisah koma
  */
 const TOKEN = 'GANTI-DENGAN-KODE-RAHASIA'; // samakan dengan isian di aplikasi
 const VERSI = '${SCRIPT_VERSI}';
+
+/** Batas kiriman (mencegah kiriman raksasa / tombol tertekan berulang). */
+const MAKS_SEL = 400;   // jumlah sel per kiriman
+const MAKS_KIRIM = 60;  // kiriman per 5 menit (per skrip)
+const MAKS_SISIP = 5;   // baris baru per kiriman
+
+/** Properti skrip (PIN admin & minggu yang dibuka). Aman bila tidak tersedia. */
+function properti() {
+  try {
+    return typeof PropertiesService !== 'undefined' && PropertiesService ? PropertiesService.getScriptProperties() : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function propertiBaca(kunci, bawaan) {
+  const p = properti();
+  if (!p) return bawaan;
+  const v = p.getProperty(kunci);
+  return v === null || v === undefined ? bawaan : String(v);
+}
+
+function propertiTulis(kunci, nilai) {
+  const p = properti();
+  if (p) p.setProperty(kunci, String(nilai));
+}
+
+function daftar(gid) {
+  return String(gid || '').split(',').map(function (x) { return String(x).trim(); }).filter(function (x) { return !!x; });
+}
+
+function pinAdmin() {
+  return String(propertiBaca('PIN_ADMIN', '')).trim();
+}
+
+function pinBenar(p) {
+  const kunci = pinAdmin();
+  return !!kunci && String(p || '') === kunci;
+}
+
+/** Pesan galat bila PIN admin tidak ada / salah; null bila boleh. */
+function butuhAdmin(p, aksi) {
+  if (!pinAdmin()) return { ok: false, versi: VERSI, error: 'PIN admin belum disetel di skrip (Script Properties → PIN_ADMIN). Aksi "' + aksi + '" hanya untuk admin.' };
+  if (!pinBenar(p)) return { ok: false, versi: VERSI, error: 'PIN admin salah. Aksi "' + aksi + '" hanya untuk admin.' };
+  return null;
+}
+
+/** Tab mingguan (bukan tab bantu berawalan garis bawah). */
+function tabMinggu(ss) {
+  return ss.getSheets().filter(function (s) { return !s.isSheetHidden() && String(s.getName()).charAt(0) !== '_'; });
+}
+
+/**
+ * Urutan minggu dibaca dari JUDUL tab ("LAPORAN MINGGU II BULAN NOVEMBER 2026"), bukan dari
+ * posisi tab — supaya urutan tab yang digeser orang tidak membalik siapa yang terbaru.
+ * null = judul tidak terbaca.
+ */
+const BULAN_NAMA = ['januari', 'februari', 'maret', 'april', 'mei', 'juni', 'juli', 'agustus', 'september', 'oktober', 'november', 'desember'];
+const ROMAWI_ANGKA = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6 };
+
+function kunciMinggu(sh) {
+  let teks = '';
+  try {
+    // Judul "LAPORAN MINGGU …" biasanya di 3 baris pertama; kolom A–F cukup.
+    const v = sh.getRange(1, 1, 3, 6).getDisplayValues();
+    teks = v.map(function (r) { return r.join(' '); }).join(' ');
+  } catch (e) {
+    teks = '';
+  }
+  const t = rapi(teks);
+  let bulan = -1;
+  for (let i = 0; i < BULAN_NAMA.length; i++) if (t.indexOf(BULAN_NAMA[i]) >= 0) { bulan = i; break; }
+  const th = t.match(/(20\\d{2}|19\\d{2})/);
+  const rom = t.match(/minggu\\s+([ivx]+)/);
+  const minggu = rom ? ROMAWI_ANGKA[rom[1]] || 0 : 0;
+  const tahun = th ? Number(th[1]) : 0;
+  if (bulan < 0 && !tahun && !minggu) return null;
+  return tahun * 10000 + Math.max(bulan, 0) * 100 + minggu;
+}
+
+/** Minggu terbaru: judul dengan bulan/minggu paling akhir. Bila semua judul tak terbaca, pakai urutan tab. */
+function gidTerbaru(ss) {
+  const d = tabMinggu(ss);
+  if (!d.length) return '';
+  let pilih = null, kunci = -1;
+  for (let i = 0; i < d.length; i++) {
+    const k = kunciMinggu(d[i]);
+    if (k !== null && k > kunci) { kunci = k; pilih = d[i]; }
+  }
+  return String((pilih || d[d.length - 1]).getSheetId());
+}
+
+function mingguDibuka() {
+  return daftar(propertiBaca('MINGGU_BUKA', ''));
+}
+
+/** Minggu lama terkunci: hanya boleh ditulis bila admin membukanya lagi. */
+function terkunci(ss, sh) {
+  const gid = String(sh.getSheetId());
+  const baru = gidTerbaru(ss);
+  if (!baru || gid === baru) return false;
+  return mingguDibuka().indexOf(gid) < 0;
+}
+
+/** Perkiraan jumlah sel dalam satu kiriman. */
+function banyakSel(d) {
+  return (d.kegiatan || []).length + (d.lampiran || []).length + (d.rencana || []).length +
+    (d.presensi || []).length * 4 + (d.aplikasi || []).length * 5 +
+    (d.sel || []).length + (d.keuangan || []).length * 4 + (d.sisip || []).length;
+}
+
+/** Batas frekuensi kiriman (5 menit). Tanpa CacheService (mis. saat diuji) selalu lolos. */
+function dalamBatasKirim() {
+  try {
+    if (typeof CacheService === 'undefined' || !CacheService) return true;
+    const c = CacheService.getScriptCache();
+    const n = Number(c.get('kirim') || 0) + 1;
+    c.put('kirim', String(n), 300);
+    return n <= MAKS_KIRIM;
+  } catch (e) {
+    return true;
+  }
+}
 
 /** Rapikan teks: huruf kecil, spasi tunggal — dipakai untuk mencocokkan tanggal. */
 function rapi(s) {
@@ -1111,8 +1333,12 @@ function rapi(s) {
 
 function doGet(e) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const p = (e && e.parameter) || {};
+  // Cek PIN admin (dipakai aplikasi sebelum menampilkan menu pengaturan lanjutan).
+  if (p.aksi === 'pin') return keluar({ ok: pinBenar(p.pin), versi: VERSI, adaPin: !!pinAdmin() });
   return keluar({
     ok: true, versi: VERSI, nama: ss.getName(),
+    terbaru: gidTerbaru(ss), dibuka: mingguDibuka(), adaPin: !!pinAdmin(),
     tabs: ss.getSheets().filter(function (s) { return !s.isSheetHidden(); })
       .map(function (s) { return { name: s.getName(), gid: String(s.getSheetId()) }; })
   });
@@ -1172,19 +1398,66 @@ function doPost(e) {
   try {
     const d = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     if (String(d.token) !== String(TOKEN)) return keluar({ ok: false, error: 'Token tidak cocok dengan yang ada di skrip.' });
-    if (d.aksi === 'buatTab') return buatTab(d);
+    if (!dalamBatasKirim()) return keluar({ ok: false, versi: VERSI, error: 'Terlalu banyak kiriman dalam waktu singkat. Tunggu beberapa saat lalu coba lagi.' });
+    if (d.aksi === 'buatTab') {
+      const tolak = butuhAdmin(d.pin, 'buat minggu baru');
+      if (tolak) return keluar(tolak);
+      return buatTab(d);
+    }
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+    // Buka / kunci kembali satu minggu (admin).
+    if (d.aksi === 'bukaMinggu' || d.aksi === 'kunciMinggu') {
+      const tolak = butuhAdmin(d.pin, d.aksi === 'bukaMinggu' ? 'buka kunci minggu' : 'kunci minggu');
+      if (tolak) return keluar(tolak);
+      const gid = String(d.gid || '');
+      if (!cariTab(ss, gid)) return keluar({ ok: false, versi: VERSI, error: 'Tab dengan gid ' + gid + ' tidak ditemukan.' });
+      const kini = mingguDibuka().filter(function (x) { return x !== gid; });
+      if (d.aksi === 'bukaMinggu') kini.push(gid);
+      propertiTulis('MINGGU_BUKA', kini.join(','));
+      return keluar({ ok: true, versi: VERSI, terbaru: gidTerbaru(ss), dibuka: kini });
+    }
     const sh = cariTab(ss, d.gid);
     if (!sh) return keluar({ ok: false, error: 'Tab dengan gid ' + d.gid + ' tidak ditemukan.' });
+    if (terkunci(ss, sh)) {
+      return keluar({
+        ok: false, versi: VERSI, terkunci: true,
+        error: 'Minggu "' + sh.getName() + '" sudah ditutup dan tidak bisa diubah lagi. Minta admin membuka kuncinya bila perlu koreksi.'
+      });
+    }
+    if (String(d.oleh || '').trim().length < 2) {
+      return keluar({ ok: false, versi: VERSI, error: 'Nama pengisi wajib diisi dulu (menu profil di kiri bawah) sebelum mengirim.' });
+    }
+    if (banyakSel(d) > MAKS_SEL) {
+      return keluar({ ok: false, versi: VERSI, error: 'Kiriman terlalu besar (' + banyakSel(d) + ' sel, maksimal ' + MAKS_SEL + '). Kirim sebagian dulu.' });
+    }
+    if ((d.sisip || []).length > MAKS_SISIP) {
+      return keluar({ ok: false, versi: VERSI, error: 'Maksimal ' + MAKS_SISIP + ' baris baru sekali kirim.' });
+    }
+    if (d.penuh) {
+      const tolak = butuhAdmin(d.pin, 'kirim ulang seluruh isian');
+      if (tolak) return keluar(tolak);
+    }
 
     const m = petakan(sh), k = m.col;
-    let n = 0; const gagal = [];
+    let n = 0; const gagal = []; const konflik = [];
     const tulis = function (row, cols, vals, label) {
       if (!row) { gagal.push(label); return; }
       n += tulisBaris(sh, row, cols, vals);
     };
+    /** Tolak menimpa sel yang sudah diubah rekan sejak perangkat ini terakhir membaca. */
+    const berubah = function (row, kolom, lama) {
+      if (lama === undefined || lama === null) return false;
+      const sekarang = String(sh.getRange(row, Number(kolom) + 1).getDisplayValue() || '');
+      return rapi(sekarang) !== rapi(lama);
+    };
 
-    (d.kegiatan || []).forEach(function (x) { tulis(m.A[x.tim + '|' + x.sub + '|' + x.tanggal], [k.ur], [x.uraian], 'kegiatan ' + x.tim + ' ' + x.tanggal); });
+    (d.kegiatan || []).forEach(function (x) {
+      const row = m.A[x.tim + '|' + x.sub + '|' + x.tanggal];
+      const label = 'kegiatan ' + x.tim + ' ' + x.tanggal;
+      if (!row) { gagal.push(label); return; }
+      if (berubah(row, k.ur, x.lama)) { konflik.push(label); return; }
+      n += tulisBaris(sh, row, [k.ur], [x.uraian]);
+    });
     (d.lampiran || []).forEach(function (x) {
       const kunci = x.tim + '|' + x.sub;
       const tgl = rapi(x.tanggal || '');
@@ -1193,7 +1466,13 @@ function doPost(e) {
       if (!barisLamp) { gagal.push('lampiran ' + x.tim + (x.tanggal ? ' ' + x.tanggal : '')); return; }
       n += tulisLampiran(sh, barisLamp, k.lamp, x.url, x.gabung !== false, m, x.tim, x.sub);
     });
-    (d.rencana || []).forEach(function (x) { tulis(m.B[x.tim], [k.bUr], [x.uraian], 'rencana ' + x.tim); });
+    (d.rencana || []).forEach(function (x) {
+      const row = m.B[x.tim];
+      const label = 'rencana ' + x.tim;
+      if (!row) { gagal.push(label); return; }
+      if (berubah(row, k.bUr, x.lama)) { konflik.push(label); return; }
+      n += tulisBaris(sh, row, [k.bUr], [x.uraian]);
+    });
     (d.keuangan || []).forEach(function (x) {
       const kode = String(x.kode || '').trim();
       if (!kode) { gagal.push('keuangan: kode kosong'); return; }
@@ -1221,7 +1500,7 @@ function doPost(e) {
     });
 
     if (n) catat(sh, d.oleh, n, gagal.length);
-    return keluar({ ok: true, versi: VERSI, ditulis: n, gagal: gagal });
+    return keluar({ ok: true, versi: VERSI, ditulis: n, gagal: gagal, konflik: konflik });
   } catch (err) {
     return keluar({ ok: false, error: String(err) });
   } finally {

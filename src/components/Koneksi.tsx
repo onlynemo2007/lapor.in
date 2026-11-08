@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { useApp } from "../lib/store";
 import { go } from "./Shell";
 import { jamSinkron } from "../lib/sync";
-import { Btn, I, cx } from "./ui";
+import { Btn, I, Spinner, cx, useToast } from "./ui";
 
 /**
  * Pemberitahuan koneksi perangkat.
@@ -67,4 +68,47 @@ export function PeringatanKoneksi({ className = "" }: { className?: string }) {
     );
 
   return null;
+}
+
+/**
+ * Spanduk untuk minggu yang sudah ditutup.
+ *
+ * Minggu lama hanya boleh dibaca: skrip menolak tulisan ke tab selain tab minggu
+ * terbaru, kecuali admin membuka kuncinya kembali.
+ */
+export function PeringatanMinggu({ className = "" }: { className?: string }) {
+  const { settings, terkunciAktif, skripInfo, aturKunciMinggu, tabs } = useApp();
+  const toast = useToast();
+  const [sibuk, setSibuk] = useState(false);
+  if (!terkunciAktif) return null;
+
+  const namaTab = tabs.find((t) => t.gid === settings.activeGid)?.name ?? settings.activeGid;
+  const sekarang = skripInfo?.terbaru ? tabs.find((t) => t.gid === skripInfo.terbaru)?.name : undefined;
+
+  const buka = async () => {
+    setSibuk(true);
+    const r = await aturKunciMinggu(settings.activeGid, true);
+    setSibuk(false);
+    toast(r.ok ? `Minggu “${namaTab}” dibuka kembali` : r.error ?? "Gagal membuka kunci", r.ok ? "ok" : "err");
+  };
+
+  return (
+    <div className={cx("no-print flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-paper px-4 py-3", className)}>
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-muted">
+        <I.lock className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-bold text-ink">Minggu “{namaTab}” sudah ditutup — hanya bisa dibaca</p>
+        <p className="mt-0.5 text-[12px] leading-relaxed text-muted">
+          Isian minggu lama tidak dikirim ke sheet agar rekap yang sudah diserahkan tidak berubah
+          {sekarang ? ` (minggu aktif: “${sekarang}”)` : ""}. Butuh koreksi? {settings.pinAdmin ? "Buka kuncinya di bawah." : "Minta admin membuka kuncinya."}
+        </p>
+      </div>
+      {settings.pinAdmin && (
+        <Btn variant="ghost" size="sm" className="bg-white" onClick={() => void buka()} disabled={sibuk}>
+          {sibuk ? <Spinner className="h-3.5 w-3.5" /> : <I.lock className="h-3.5 w-3.5" />} Buka kunci (admin)
+        </Btn>
+      )}
+    </div>
+  );
 }

@@ -31,6 +31,11 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
     buangTautan,
     versiSkrip,
     periksaSkrip,
+    skripInfo,
+    masukAdmin,
+    keluarAdmin,
+    terkunciAktif,
+    aturKunciMinggu,
   } = useApp();
   const toast = useToast();
   const [copied, setCopied] = useState("");
@@ -49,6 +54,11 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
   // isian koneksi memakai draf: URL & token yang sudah ada tidak pernah terhapus saat mengetik/keluar kolom
   const [urlDraf, setUrlDraf] = useState(settings.scriptUrl);
   const [tokenDraf, setTokenDraf] = useState(settings.token);
+  // mode admin: PIN diverifikasi skrip, disimpan hanya di perangkat ini
+  const [pinDraf, setPinDraf] = useState("");
+  const [busyPin, setBusyPin] = useState(false);
+  const [pesanPin, setPesanPin] = useState<{ ok: boolean; text: string } | null>(null);
+  const [tampilToken, setTampilToken] = useState(false);
 
   useEffect(() => {
     setUrlDraf(settings.scriptUrl);
@@ -80,6 +90,8 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
   if (!week) return <StateGate />;
 
   const terpasang = !!settings.scriptUrl && !!settings.token;
+  /** Mode admin: PIN sudah diverifikasi skrip di perangkat ini. */
+  const admin = !!(settings.pinAdmin ?? "").trim();
   const tautanSama = !!tautan && tautan.scriptUrl === settings.scriptUrl && tautan.token === settings.token;
   const urlValid = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec/.test(settings.scriptUrl);
   const sheetUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit#gid=${week.gid}`;
@@ -100,6 +112,20 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
     if (patch.scriptUrl || patch.token) void periksaSkrip();
     toast("Koneksi disimpan di perangkat ini");
     setHasil({ ok: true, text: "URL & token tersimpan di perangkat ini — tidak terhapus saat data diperbarui atau aplikasi dimuat ulang." });
+  };
+
+  const bukaAdmin = async () => {
+    if (!pinDraf.trim()) return;
+    setBusyPin(true);
+    const r = await masukAdmin(pinDraf);
+    setBusyPin(false);
+    if (r.ok) {
+      setPesanPin({ ok: true, text: "Mode admin aktif di perangkat ini. PIN tidak dikirim ke sheet." });
+      setPinDraf("");
+      toast("Mode admin aktif");
+    } else {
+      setPesanPin({ ok: false, text: r.error ?? "PIN admin salah." });
+    }
   };
 
   const putus = () => {
@@ -247,6 +273,86 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
         </Card>
       )}
 
+      {/* mode admin */}
+      <Card className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <span className={cx("grid h-11 w-11 shrink-0 place-items-center rounded-2xl", admin ? "bg-ink text-white" : "bg-paper text-muted")}>
+              <I.lock className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-[15.5px] font-bold">{admin ? "Mode admin aktif di perangkat ini" : "Mode admin"}</p>
+              <p className="mt-0.5 max-w-[560px] text-[12.5px] leading-relaxed text-muted">
+                {admin
+                  ? "Pengaturan koneksi, tautan siap pakai, pembuatan minggu baru, dan kirim ulang seluruh isian terbuka. PIN tidak disimpan di skrip — hanya di perangkat ini."
+                  : "Untuk pengurus: buka mode admin agar pengaturan koneksi, tautan siap pakai, minggu baru, dan kirim ulang seluruh isian bisa dipakai. PIN disetel di Apps Script → Project Settings → Script Properties → PIN_ADMIN."}
+              </p>
+              {!admin && skripInfo?.adaPin === false && (
+                <p className="mt-1.5 text-[12px] font-semibold text-warn">PIN_ADMIN belum disetel di skrip.</p>
+              )}
+            </div>
+          </div>
+          {admin ? (
+            <Btn
+              variant="ghost"
+              onClick={() => {
+                keluarAdmin();
+                setPesanPin(null);
+                toast("Mode admin ditutup di perangkat ini", "info");
+              }}
+            >
+              <I.x className="h-4 w-4" /> Tutup mode admin
+            </Btn>
+          ) : (
+            <div className="flex items-end gap-2">
+              <label className="block">
+                <span className="block text-[11.5px] font-semibold text-muted">PIN admin</span>
+                <input
+                  type="password"
+                  value={pinDraf}
+                  onChange={(e) => setPinDraf(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    void bukaAdmin();
+                  }}
+                  placeholder="••••••"
+                  className="mt-1 h-10 w-[150px] rounded-xl border border-line bg-paper px-3 font-mono text-[12.5px] outline-none transition focus:border-brand focus:bg-white"
+                />
+              </label>
+              <Btn variant="brand" onClick={() => void bukaAdmin()} disabled={busyPin || !terpasang || !pinDraf.trim()}>
+                {busyPin ? <Spinner className="h-4 w-4" /> : <I.lock className="h-4 w-4" />} Buka
+              </Btn>
+            </div>
+          )}
+        </div>
+        {pesanPin && !admin && (
+          <p className={cx("mt-3 rounded-xl px-3 py-2 text-[12px]", pesanPin.ok ? "bg-brand-soft text-[#0b5e42]" : "bg-bad-soft text-bad")}>
+            {pesanPin.text}
+          </p>
+        )}
+        {admin && terkunciAktif && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper p-3">
+            <p className="text-[12px] leading-relaxed text-muted">
+              Minggu <b className="text-ink">{week.tab}</b> sudah ditutup (bukan minggu terbaru), jadi isiannya tidak dikirim ke sheet.
+            </p>
+            <Btn
+              variant="ghost"
+              size="sm"
+              className="bg-white"
+              onClick={() => {
+                void (async () => {
+                  const r = await aturKunciMinggu(week.gid, true);
+                  toast(r.ok ? `Minggu “${week.tab}” dibuka kembali` : r.error ?? "Gagal membuka kunci", r.ok ? "ok" : "err");
+                })();
+              }}
+            >
+              <I.lock className="h-3.5 w-3.5" /> Buka kunci minggu ini
+            </Btn>
+          </div>
+        )}
+      </Card>
+
       {/* status & kontrol */}
       <Card className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -349,17 +455,19 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
           <Btn variant="ghost" onClick={() => void reload()} disabled={busy !== ""}>
             <I.refresh className="h-4 w-4" /> Muat ulang dari Sheet
           </Btn>
-          <Btn
-            variant="soft"
-            onClick={() => {
-              kirimSemua();
-              toast("Seluruh isian tab ini akan ditulis ulang ke Sheet");
-            }}
-            disabled={!terpasang || busy !== ""}
-            title="Tulis seluruh isian tab ini ke sheet (untuk pemulihan)"
-          >
-            <I.sheet className="h-4 w-4" /> Kirim ulang semua isian
-          </Btn>
+          {admin && (
+            <Btn
+              variant="soft"
+              onClick={() => {
+                kirimSemua();
+                toast("Seluruh isian tab ini akan ditulis ulang ke Sheet");
+              }}
+              disabled={!terpasang || busy !== ""}
+              title="Tulis seluruh isian tab ini ke sheet (untuk pemulihan) — hanya admin"
+            >
+              <I.sheet className="h-4 w-4" /> Kirim ulang semua isian
+            </Btn>
+          )}
           {!terpasang && (
             <span className="text-[12px] text-warn">Isi URL Web App & token di bawah untuk mengaktifkan.</span>
           )}
@@ -604,20 +712,23 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
               <Btn variant="ghost" size="sm" onClick={() => setBukaKode((v) => !v)}>
                 {bukaKode ? "Sembunyikan" : "Lihat kode"}
               </Btn>
-              <Btn
-                variant={copied === "script" ? "brand" : "primary"}
-                size="sm"
-                onClick={() =>
-                  doCopy(
-                    "script",
-                    settings.token ? APPS_SCRIPT.replace("GANTI-DENGAN-KODE-RAHASIA", settings.token) : APPS_SCRIPT,
-                    `Kode v${SCRIPT_VERSI} tersalin`,
-                  )
-                }
-              >
-                {copied === "script" ? <I.check className="h-3.5 w-3.5" /> : <I.copy className="h-3.5 w-3.5" />}
-                {copied === "script" ? "Tersalin" : "Salin kode"}
-              </Btn>
+              {/* Kode yang disalin memuat token asli → hanya admin. */}
+              {admin && (
+                <Btn
+                  variant={copied === "script" ? "brand" : "primary"}
+                  size="sm"
+                  onClick={() =>
+                    doCopy(
+                      "script",
+                      settings.token ? APPS_SCRIPT.replace("GANTI-DENGAN-KODE-RAHASIA", settings.token) : APPS_SCRIPT,
+                      `Kode v${SCRIPT_VERSI} tersalin`,
+                    )
+                  }
+                >
+                  {copied === "script" ? <I.check className="h-3.5 w-3.5" /> : <I.copy className="h-3.5 w-3.5" />}
+                  {copied === "script" ? "Tersalin" : "Salin kode"}
+                </Btn>
+              )}
             </div>
           </div>
           {bukaKode && (
@@ -668,6 +779,7 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
               <label className="block text-[12px] font-semibold text-muted">URL Web App</label>
               <input
                 value={urlDraf}
+                readOnly={!admin}
                 onChange={(e) => setUrlDraf(e.target.value)}
                 onBlur={() => simpanKoneksi(true)}
                 onKeyDown={(e) => {
@@ -688,6 +800,8 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
               </label>
               <input
                 value={tokenDraf}
+                type={tampilToken ? "text" : "password"}
+                readOnly={!admin}
                 onChange={(e) => setTokenDraf(e.target.value)}
                 onBlur={() => simpanKoneksi(true)}
                 onKeyDown={(e) => {
@@ -706,8 +820,14 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
               </p>
 
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Btn variant="primary" size="sm" onClick={() => simpanKoneksi()} disabled={busy !== ""}>
-                  <I.check className="h-3.5 w-3.5" /> Simpan koneksi
+                {admin && (
+                  <Btn variant="primary" size="sm" onClick={() => simpanKoneksi()} disabled={busy !== ""}>
+                    <I.check className="h-3.5 w-3.5" /> Simpan koneksi
+                  </Btn>
+                )}
+                <Btn variant="ghost" size="sm" onClick={() => setTampilToken((v) => !v)}>
+                  {tampilToken ? <I.x className="h-3.5 w-3.5" /> : <I.doc className="h-3.5 w-3.5" />}
+                  {tampilToken ? "Sembunyikan token" : "Tampilkan token"}
                 </Btn>
                 <Btn variant="ghost" size="sm" onClick={tes} disabled={!settings.scriptUrl || busy !== ""}>
                   {busy === "tes" ? <Spinner className="h-3.5 w-3.5" /> : <I.bolt className="h-3.5 w-3.5" />}
@@ -735,7 +855,7 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
                 </div>
               )}
 
-              {terpasang && (
+              {terpasang && admin && (
                 <div className="mt-4 rounded-xl border border-line p-3">
                   <p className="text-[12.5px] font-bold">Bagikan ke rekan setim</p>
                   <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">
@@ -854,7 +974,7 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
                 </li>
               ))}
             </ul>
-            {dirtyCount > 0 && (
+            {admin && dirtyCount > 0 && (
               <Btn
                 variant="soft"
                 size="sm"

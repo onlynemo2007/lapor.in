@@ -198,6 +198,12 @@ export type WeekData = {
   /** isian sel tabel keuangan yang belum terkirim: "baris:kolom" → teks */
   selKeuangan: Record<string, string>;
   rows: RowMap;
+  /**
+   * Teks sel bagian A/B **saat terakhir dibaca dari sheet** ("A:tim|sub|tanggal", "B:tim").
+   * Dikirim bersama isian baru sebagai pembanding anti-timpa: bila isi sheet sudah berubah
+   * oleh rekan, skrip menolak tulisan itu (dan aplikasi minta muat ulang).
+   */
+  asli?: Record<string, string>;
   dirty: Record<string, true>;
   meta: Record<string, { oleh: string; at: number; ganti?: boolean }>;
   importedAt: number;

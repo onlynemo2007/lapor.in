@@ -11,3 +11,4 @@ tsconfig.tsbuildinfo
 .uji/uji-presensi-ui.mjs
 .uji/uji-koneksi-ui.mjs
 .uji/uji-koneksi-bawaan.mjs
+.uji/uji-admin-ui.mjs

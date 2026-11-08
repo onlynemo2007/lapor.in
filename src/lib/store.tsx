@@ -16,7 +16,7 @@ import {
   SLOT_ROWS,
   TIMS,
 } from "./model";
-import { buatTabBaru, fetchWeek, kirimKeScript, mergeWeek, tesScript } from "./sheet";
+import { aturMinggu, buatTabBaru, cekPin, fetchWeek, kirimKeScript, mergeWeek, tesScript, type SkripInfo } from "./sheet";
 import { bacaKoneksiMentah, bersihkanTautan, dariTautan, koneksiBawaan, tentukanKoneksi } from "./koneksi";
 import { jumlahTertunda, siapkanKiriman, tandaiTerkirim, verifikasiKiriman, type SyncLog, type SyncState } from "./sync";
 
@@ -27,6 +27,8 @@ export type Settings = {
   token: string;
   /** Kirim otomatis setiap isian disimpan (tanpa menekan tombol). */
   autoSync: boolean;
+  /** PIN admin perangkat ini — diverifikasi skrip, tidak pernah disimpan di skrip. */
+  pinAdmin?: string;
   activeGid: string;
   extraTabs: Tab[];
 };
@@ -55,6 +57,7 @@ const defaultSettings: Settings = {
   scriptUrl: "",
   token: "",
   autoSync: true,
+  pinAdmin: "",
   activeGid: DEFAULT_TABS[0].gid,
   extraTabs: [],
 };
@@ -92,7 +95,10 @@ function load(): Persisted {
   }
   // Koneksi tersimpan terpisah: menang bila ada; kalau perangkat ini belum pernah
   // tersambung, koneksi bawaan build dipakai supaya rekan setim tidak perlu mengisi apa pun.
-  const koneksi = tentukanKoneksi(bacaKoneksi(), bawaanBuild());
+  // Kunci `laporin:koneksi` yang belum pernah dibuat tidak boleh menghapus URL/token
+  // yang tersimpan di data utama (versi lama aplikasi menyimpannya di sana).
+  const tersimpan = bacaKoneksi() ?? (settings.scriptUrl || settings.token ? { scriptUrl: settings.scriptUrl, token: settings.token } : null);
+  const koneksi = tentukanKoneksi(tersimpan, bawaanBuild());
   settings = {
     ...settings,
     scriptUrl: koneksi.scriptUrl,
@@ -161,7 +167,8 @@ type Ctx = {
   weeks: Record<string, WeekData>;
   loadState: LoadState;
   /** Muat ulang tab dari sheet; hasil `true` bila berhasil terbaca. `senyap` = tanpa indikator memuat. */
-  reload: (gid?: string, senyap?: boolean) => Promise<boolean>;
+  /** Muat ulang tab dari sheet. `tanpaLokal` = abaikan isian lokal yang belum terkirim (dipakai saat bentrok). */
+  reload: (gid?: string, senyap?: boolean, tanpaLokal?: boolean) => Promise<boolean>;
   /** Waktu (ms) sheet terakhir berhasil dibaca ulang — dipakai pratinjau agar selalu data terbaru. */
   dibacaAt?: number;
   /** Pembacaan sheet terakhir gagal (data yang tampil bisa lebih lama dari sheet). */
@@ -191,6 +198,16 @@ type Ctx = {
   versiSkrip: string;
   /** Periksa skrip: versi & daftar tab. `true` bila skrip merespons. */
   periksaSkrip: () => Promise<{ ok: boolean; versi?: string; nama?: string; jumlahTab?: number; error?: string }>;
+  /** Info terakhir dari skrip: minggu terbaru, minggu yang dibuka admin, ada PIN atau belum. */
+  skripInfo: SkripInfo | null;
+  /** Tab minggu aktif sudah ditutup (baca-saja) menurut skrip. */
+  terkunciAktif: boolean;
+  /** Buka / kunci kembali satu minggu — hanya berhasil bila PIN admin benar. */
+  aturKunciMinggu: (gid: string, buka: boolean) => Promise<{ ok: boolean; error?: string }>;
+  /** Periksa PIN admin ke skrip; bila benar disimpan di perangkat ini. */
+  masukAdmin: (pin: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Lupakan PIN admin di perangkat ini. */
+  keluarAdmin: () => void;
   /** Pengaturan dari tautan siap pakai (#/sinkron?setup=…). */
   tautan: TautanSiapPakai | null;
   terapkanTautan: () => void;
@@ -206,6 +223,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [syncState, setSyncState] = useState<SyncState>({ status: "idle", pending: 0 });
   const [tautan, setTautan] = useState<TautanSiapPakai | null>(null);
   const [versiSkrip, setVersiSkrip] = useState("");
+  const [skripInfo, setSkripInfo] = useState<SkripInfo | null>(null);
   const [dibacaAt, setDibacaAt] = useState<number>();
   /** Gagal baca terakhir (mis. jaringan/Google menolak) — supaya data lama tidak tampil tanpa tanda. */
   const [gagalBaca, setGagalBaca] = useState<{ at: number; pesan: string } | null>(null);
@@ -215,13 +233,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /** Perangkat ini sengaja diputuskan dari Apps Script (koneksi bawaan tidak boleh memaksa masuk). */
   const putusRef = useRef<boolean>(bacaKoneksi()?.putus === true);
+  /** gid yang sedang dikirim ULANG seluruhnya (butuh PIN admin di skrip). */
+  const penuhRef = useRef<string | null>(null);
 
   const sending = useRef(false);
   const again = useRef(false);
   const percobaan = useRef(0);
   const timer = useRef<number | null>(null);
   const runRef = useRef<(paksa?: boolean) => Promise<void>>(async () => {});
-  const reloadRef = useRef<(gid?: string, senyap?: boolean) => Promise<boolean>>(async () => false);
+  const reloadRef = useRef<(gid?: string, senyap?: boolean, tanpaLokal?: boolean) => Promise<boolean>>(async () => false);
 
   useEffect(() => {
     // 1) Koneksi Apps Script disimpan lebih dulu (kecil, hampir tidak mungkin gagal)
@@ -264,6 +284,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         const r = await tesScript(st.scriptUrl);
         if (r.versi) setVersiSkrip(String(r.versi));
+        setSkripInfo(r);
         if (!r.ok || !r.tabs?.length) return;
         const extra = r.tabs.filter((t) => !t.name.startsWith("_"));
         setData((d) => ({ ...d, settings: { ...d.settings, extraTabs: extra } }));
@@ -280,6 +301,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const r = await tesScript(st.scriptUrl);
       if (r.versi) setVersiSkrip(String(r.versi));
+      setSkripInfo(r);
       if (r.ok && r.tabs?.length) {
         const extra = r.tabs.filter((t) => !t.name.startsWith("_"));
         setData((d) => ({ ...d, settings: { ...d.settings, extraTabs: extra } }));
@@ -314,6 +336,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSyncState({ status: "off", pending: pendingSekarang() });
         return;
       }
+      // Skrip menolak kiriman tanpa nama pengisi (jejak audit tidak berguna bila kosong).
+      if (String(st.nama || "").trim().length < 2) {
+        setSyncState({
+          status: "nama",
+          pending: pendingSekarang(),
+          pesan: "Isi nama Anda dulu (klik profil di kiri bawah) supaya isian bisa dikirim ke sheet.",
+        });
+        return;
+      }
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
         setSyncState({ status: "offline", pending: pendingSekarang(), pesan: "Tidak ada koneksi internet. Isian menunggu dikirim." });
         return;
@@ -326,6 +357,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sending.current = true;
       const sudah = new Set<string>();
       const gagalBaris: string[] = [];
+      const konflikBaris: string[] = [];
 
       try {
         for (let putaran = 0; putaran < 20; putaran++) {
@@ -335,9 +367,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           sudah.add(w.gid);
           if (!k) continue; // tidak ada isi yang bisa ditulis (mis. presensi belum lengkap)
 
+          if (penuhRef.current === w.gid) {
+            k.payload.penuh = true;
+            k.payload.pin = st.pinAdmin ?? "";
+          }
           setSyncState({ status: "sending", pending: pendingSekarang() });
           const r = await kirimKeScript(st.scriptUrl, k.payload);
           if (!r.ok) throw new Error(r.error ?? "Skrip menolak tulisan ke sheet.");
+          if (r.konflik?.length) {
+            // Anti-timpa: sel sudah diubah rekan. Jangan timpa — buang isian lokal tab ini
+            // lalu muat ulang dari sheet supaya tampilan & isian kembali sama.
+            konflikBaris.push(...r.konflik);
+            setData((d) => {
+              const cur = d.weeks[w.gid];
+              return cur ? { ...d, weeks: { ...d.weeks, [w.gid]: { ...cur, dirty: {} } } } : d;
+            });
+          }
 
           // Bila balasan skrip tidak terbaca (mode no-cors), pastikan sheet benar-benar berubah.
           if (!r.verified && !(await verifikasiKiriman(k))) {
@@ -360,12 +405,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           });
           percobaan.current = 0;
         }
-        setSyncState({
-          status: "ok",
-          pending: pendingSekarang(),
-          at: Date.now(),
-          gagal: gagalBaris.length ? gagalBaris : undefined,
-        });
+        if (konflikBaris.length) {
+          setSyncState({
+            status: "konflik",
+            pending: pendingSekarang(),
+            pesan: `${konflikBaris.length} isian tidak dikirim karena selnya sudah diubah rekan. Tampilan dimuat ulang dari sheet — silakan periksa lagi.`,
+          });
+          // Isian lokal yang bentrok tidak boleh dipertahankan: ambil apa adanya dari sheet.
+          void reloadRef.current(undefined, true, true);
+        } else {
+          setSyncState({
+            status: "ok",
+            pending: pendingSekarang(),
+            at: Date.now(),
+            gagal: gagalBaris.length ? gagalBaris : undefined,
+          });
+        }
       } catch (e) {
         const pesan = e instanceof Error ? e.message : "Gagal mengirim ke Google Sheet.";
         percobaan.current += 1;
@@ -379,6 +434,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }, ULANG[n - 1]);
         }
       } finally {
+        penuhRef.current = null;
         sending.current = false;
         if (again.current) {
           again.current = false;
@@ -420,6 +476,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSyncState((s) => (s.status === "off" && s.pending === pendingCount ? s : { status: "off", pending: pendingCount, at: s.at }));
       return;
     }
+    // Nama kosong / konflik: jangan kirim otomatis berulang sampai pengguna bertindak.
+    if (syncState.status === "nama" || syncState.status === "konflik") return;
     if (!pendingCount) {
       setSyncState((s) =>
         s.status === "sending" ? s : { status: s.at ? "ok" : "idle", pending: 0, at: s.at, gagal: s.gagal },
@@ -503,6 +561,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const a = w.aplikasi[k];
         if (a && Object.values(a).some((v) => v !== null)) dirty[`P:${k}`] = true;
       });
+      penuhRef.current = g;
       return { ...d, weeks: { ...d.weeks, [g]: { ...w, dirty } } };
     });
     window.setTimeout(() => void runRef.current(true), 500);
@@ -577,13 +636,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const reload = useCallback(
-    async (gid?: string, senyap = false) => {
+    async (gid?: string, senyap = false, tanpaLokal = false) => {
       const g = gid ?? dataRef.current.settings.activeGid;
       const tab = tabs.find((t) => t.gid === g) ?? { name: g, gid: g };
       if (!senyap) setLoadState({ status: "loading" });
       try {
         let fresh = await fetchWeek(g, tab.name);
-        const local = dataRef.current.weeks[g];
+        const local = tanpaLokal ? undefined : dataRef.current.weeks[g];
         if (!local && g === DEFAULT_TABS[0].gid) fresh = migrasiLama(fresh);
         const merged = mergeWeek(fresh, local);
         const r = ringkas(merged);
@@ -621,7 +680,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!nama) return { ok: false, error: "Nama tab baru belum diisi." };
       const sumber = p.sumberGid || st.activeGid;
       try {
-        const r = await buatTabBaru(st.scriptUrl, st.token, sumber, nama, p.geserHari ?? 7, st.nama);
+        const r = await buatTabBaru(st.scriptUrl, st.token, sumber, nama, p.geserHari ?? 7, st.nama, st.pinAdmin ?? "");
         if (!r.ok || !r.gid) return { ok: false, error: r.error ?? "Tab baru tidak dibuat." };
         const tab: Tab = { name: r.name ?? nama, gid: String(r.gid) };
         setData((d) => ({
@@ -709,6 +768,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [reload]);
 
+  /** PIN admin diperiksa ke skrip (PIN tidak disimpan di skrip, hanya di perangkat ini). */
+  const masukAdmin = useCallback(async (pin: string) => {
+    const st = dataRef.current.settings;
+    if (!st.scriptUrl) return { ok: false, error: "Sambungkan Apps Script dulu." };
+    if (!pin.trim()) return { ok: false, error: "PIN admin belum diisi." };
+    const r = await cekPin(st.scriptUrl, pin.trim());
+    if (!r.ok) {
+      return {
+        ok: false,
+        error: r.error ?? (r.adaPin === false ? "PIN admin belum disetel di skrip (Script Properties → PIN_ADMIN)." : "PIN admin salah."),
+      };
+    }
+    setSettings({ pinAdmin: pin.trim() });
+    return { ok: true };
+  }, [setSettings]);
+
+  const keluarAdmin = useCallback(() => setSettings({ pinAdmin: "" }), [setSettings]);
+
+  /** Buka/kunci satu minggu — skrip yang memutuskan, PIN diverifikasi di sana. */
+  const aturKunciMinggu = useCallback(async (gid: string, buka: boolean) => {
+    const st = dataRef.current.settings;
+    if (!st.scriptUrl || !st.token) return { ok: false, error: "Sambungkan Apps Script dulu." };
+    try {
+      const r = await aturMinggu(st.scriptUrl, st.token, st.pinAdmin ?? "", gid, buka);
+      if (!r.ok) return { ok: false, error: r.error ?? "Skrip menolak permintaan." };
+      if (r.dibuka === undefined) return { ok: false, error: "Skrip di spreadsheet masih versi lama (butuh v2.2). Perbarui kode di menu Sinkronisasi." };
+      setSkripInfo((i) => (i ? { ...i, terbaru: r.terbaru ?? i.terbaru, dibuka: r.dibuka ?? i.dibuka } : i));
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Gagal menghubungi Apps Script." };
+    }
+  }, []);
+
+  /** Tab minggu aktif sudah ditutup menurut skrip (dan belum dibuka admin). */
+  const terkunciAktif = useMemo(() => {
+    const gid = data.settings.activeGid;
+    const info = skripInfo;
+    if (!info?.terbaru) return false;
+    if (gid === info.terbaru) return false;
+    return !(info.dibuka ?? []).includes(gid);
+  }, [skripInfo, data.settings.activeGid]);
+
   const week = data.weeks[data.settings.activeGid] ?? null;
   const dirtyCount = week ? Object.keys(week.dirty).length : 0;
 
@@ -739,6 +840,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     tautan,
     versiSkrip,
     periksaSkrip,
+    skripInfo,
+    terkunciAktif,
+    aturKunciMinggu,
+    masukAdmin,
+    keluarAdmin,
     terapkanTautan,
     buangTautan,
   };

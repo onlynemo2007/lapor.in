@@ -9,12 +9,16 @@ const cek = (nama, lulus, info = "") => {
 };
 
 const api = (env) =>
-  new Function("SpreadsheetApp", "LockService", "ContentService", `${kode}\nreturn { doPost: doPost, TOKEN: TOKEN, VERSI: VERSI };`)(
+  new Function("SpreadsheetApp", "LockService", "ContentService", "PropertiesService", "CacheService", `${kode}\nreturn { doPost: doPost, TOKEN: TOKEN, VERSI: VERSI };`)(
     env.SpreadsheetApp,
     env.LockService,
     env.ContentService,
+    env.PropertiesService,
+    env.CacheService,
   );
-const post = (a, isi) => JSON.parse(a.doPost({ postData: { contents: JSON.stringify(isi) } }).getContent());
+/* Skrip v2.2 mewajibkan nama pengisi ("oleh") — beri nama uji bila payload belum memuatnya. */
+const post = (a, isi) =>
+  JSON.parse(a.doPost({ postData: { contents: JSON.stringify({ oleh: "Uji", ...isi }) } }).getContent());
 
 /* ---- tab dengan bagian D (realisasi keuangan) ---- */
 function isiTab() {
@@ -52,7 +56,7 @@ function isiTab() {
 {
   const env = lingkunganDari(isiTab());
   const a = api(env);
-  cek("versi skrip terbaru", a.VERSI === "2.1", a.VERSI);
+  cek("versi skrip terbaru", a.VERSI === "2.2", a.VERSI);
 
   const r = post(a, {
     token: a.TOKEN,

@@ -22,6 +22,8 @@ export type SyncStatus =
   | "sending" // sedang mengirim
   | "ok" // semua sudah masuk sheet
   | "error" // gagal (bisa dicoba lagi)
+  | "konflik" // isian tidak dikirim: sel sudah diubah rekan (perlu muat ulang)
+  | "nama" // nama pengisi belum diisi
   | "offline"; // perangkat tanpa internet
 
 export type SyncState = {
