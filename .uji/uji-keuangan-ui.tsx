@@ -155,6 +155,38 @@ async function main() {
 
   cek("judul kartu 'Realisasi anggaran'", /Realisasi anggaran/.test(document.body.textContent ?? ""), "");
 
+  /* ---- tombol Simpan di judul tiap tabel (tanpa perlu scroll ke atas) ---- */
+  const tombolSimpanTabel = (judul: string) =>
+    Array.from(document.querySelectorAll("button")).find(
+      (b) => (b.getAttribute("aria-label") ?? "") === `Simpan tabel ${judul}`,
+    ) as HTMLButtonElement | undefined;
+  const judulTabel = c().week!.tabelKeuangan.map((t) => t.judul);
+  cek(
+    "tombol simpan ada di judul tiap tabel",
+    judulTabel.every((j) => !!tombolSimpanTabel(j)) &&
+      !!(Array.from(document.querySelectorAll("button")).find((b) => b.getAttribute("aria-label") === "Simpan tabel realisasi anggaran")),
+    JSON.stringify(judulTabel),
+  );
+  cek("tombol simpan tabel tanpa perubahan nonaktif", tombolSimpanTabel("Pembayaran Melalui LS")!.disabled === true);
+
+  const selLs = (Array.from(document.querySelectorAll("input")) as HTMLInputElement[]).find((i) => i.value === "15000000");
+  cek("sel Pembayaran LS bisa diisi", !!selLs);
+  await act(async () => {
+    if (selLs) await isi(selLs, "17000000");
+  });
+  cek("tombol simpan tabel ikut aktif setelah mengetik", tombolSimpanTabel("Pembayaran Melalui LS")!.disabled === false);
+  const ls = c().week!.tabelKeuangan.find((t) => t.judul === "Pembayaran Melalui LS")!;
+  await act(async () => {
+    tombolSimpanTabel("Pembayaran Melalui LS")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  cek(
+    "sel tersimpan lewat tombol di judul tabel",
+    c().week!.selKeuangan[`${ls.baris[0].nomor}:2`] === "17000000",
+    JSON.stringify(c().week!.selKeuangan),
+  );
+  cek("tabel lain tidak ikut tertimpa", c().week!.selKeuangan["14:3"] === "30000000", JSON.stringify(c().week!.selKeuangan));
+
   /* ---- tambah baris pada tabel keuangan (Rekapitulasi UP / Pembayaran LS) ---- */
   await act(async () => {
     c().setSettings({ scriptUrl: "https://script.google.com/macros/s/uji/exec", token: "tok", autoSync: false });

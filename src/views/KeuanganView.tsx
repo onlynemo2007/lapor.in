@@ -68,11 +68,27 @@ export default function KeuanganView() {
   const set = (kode: string, patch: Partial<Draft>) =>
     setDraft((s) => ({ ...s, [kode]: { ...(s[kode] ?? { uraian: "", pagu: "", realisasi: "" }), ...patch } }));
 
-  const simpan = () => {
-    if (!berubah.length && !selBerubah.length) return;
+  /** Sel yang termasuk satu tabel keuangan — dipakai untuk tombol Simpan per tabel. */
+  const selMilikTabel = (t: TabelKeuangan) => {
+    const kunci = new Set<string>();
+    t.baris.forEach((r) => t.kolom.forEach((k) => kunci.add(selKey(r.nomor, k.index))));
+    return selBerubah.filter((k) => kunci.has(k));
+  };
+
+  /**
+   * Simpan perubahan. `lingkup`:
+   * - "semua" → tabel realisasi anggaran + semua sel tabel keuangan (tombol di kanan atas)
+   * - "anggaran" → hanya baris kode/pagu/realisasi
+   * - TabelKeuangan → hanya sel milik tabel itu (tombol Simpan di judul tiap tabel)
+   */
+  const simpan = (lingkup: "semua" | "anggaran" | TabelKeuangan = "semua") => {
+    const pakaiKode = lingkup === "semua" || lingkup === "anggaran";
+    const pakaiSel = lingkup === "semua" ? selBerubah : lingkup === "anggaran" ? [] : selMilikTabel(lingkup);
+    const kodeBerubah = pakaiKode ? berubah : [];
+    if (!kodeBerubah.length && !pakaiSel.length) return;
     updateWeek((w) => {
       let next = w;
-      berubah.forEach((a) => {
+      kodeBerubah.forEach((a) => {
         const d = draft[a.kode];
         next = setKeuangan(
           next,
@@ -81,15 +97,16 @@ export default function KeuanganView() {
           settings.nama,
         );
       });
-      selBerubah.forEach((k) => {
+      pakaiSel.forEach((k) => {
         const [b, c] = k.split(":");
         next = setSelKeuangan(next, Number(b), Number(c), selDraft[k], settings.nama);
       });
       return next;
     });
-    awal.current = { ...draft };
+    // hanya reset penanda ketikan bila tabel anggaran ikut tersimpan
+    if (pakaiKode) awal.current = { ...draft };
     toast(
-      `Realisasi keuangan tersimpan · ${berubah.length + selBerubah.length} isian${settings.scriptUrl && settings.token && settings.autoSync ? " · langsung ke Sheet" : ""}`,
+      `Realisasi keuangan tersimpan · ${kodeBerubah.length + pakaiSel.length} isian${settings.scriptUrl && settings.token && settings.autoSync ? " · langsung ke Sheet" : ""}`,
     );
   };
 
@@ -150,7 +167,7 @@ export default function KeuanganView() {
           <Btn variant="ghost" size="sm" onClick={() => void reload(undefined, true)} title="Ambil isi terbaru dari Google Sheet">
             <I.refresh className="h-4 w-4" /> Ambil data terbaru
           </Btn>
-          <Btn variant="brand" onClick={simpan} disabled={!berubah.length && !selBerubah.length}>
+          <Btn variant="brand" onClick={() => simpan("semua")} disabled={!berubah.length && !selBerubah.length}>
             <I.check className="h-4 w-4" />
             Simpan{berubah.length + selBerubah.length ? ` (${berubah.length + selBerubah.length})` : ""}
           </Btn>
@@ -178,9 +195,9 @@ export default function KeuanganView() {
       <Card className="p-4 sm:p-5">
         <SectionTitle
           title="Realisasi anggaran"
-          sub={baris.length ? `${baris.length} kode · ketik nilai lalu Simpan` : "Tabel bagian D belum terbaca"}
+          sub={baris.length ? `${baris.length} kode · tombol Simpan juga ada di judul tiap tabel` : "Tabel bagian D belum terbaca"}
           right={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <label className="relative">
                 <input
                   value={cari}
@@ -190,6 +207,16 @@ export default function KeuanganView() {
                 />
                 <I.sheet className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted" />
               </label>
+              <Btn
+                variant="brand"
+                size="sm"
+                onClick={() => simpan("anggaran")}
+                disabled={!berubah.length}
+                aria-label="Simpan tabel realisasi anggaran"
+                title="Simpan perubahan pagu/realisasi tabel ini"
+              >
+                <I.check className="h-4 w-4" /> Simpan{berubah.length ? ` (${berubah.length})` : ""}
+              </Btn>
             </div>
           }
         />
@@ -283,13 +310,15 @@ export default function KeuanganView() {
         )}
       </Card>
 
-      {tabel.map((t) => (
+      {tabel.map((t) => {
+        const milik = selMilikTabel(t);
+        return (
         <Card key={`${t.judul}-${t.header}`} className="p-4 sm:p-5">
           <SectionTitle
             title={t.judul}
             sub={`${t.baris.length} baris · kolom mengikuti sheet (baris ${t.header})`}
             right={
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Pill>{t.kolom.length} kolom</Pill>
                 <Btn
                   variant="ghost"
@@ -300,6 +329,16 @@ export default function KeuanganView() {
                 >
                   {sisipSibuk === `${t.judul}|${t.header}` ? <Spinner className="h-4 w-4" /> : <I.plus className="h-4 w-4" />}
                   Tambah baris
+                </Btn>
+                <Btn
+                  variant="brand"
+                  size="sm"
+                  onClick={() => simpan(t)}
+                  disabled={!milik.length}
+                  aria-label={`Simpan tabel ${t.judul}`}
+                  title="Simpan perubahan pada tabel ini"
+                >
+                  <I.check className="h-4 w-4" /> Simpan{milik.length ? ` (${milik.length})` : ""}
                 </Btn>
               </div>
             }
@@ -348,7 +387,8 @@ export default function KeuanganView() {
             </table>
           </div>
         </Card>
-      ))}
+        );
+      })}
 
       {tabel.length > 0 && (
         <p className="text-[11.5px] leading-relaxed text-muted">
