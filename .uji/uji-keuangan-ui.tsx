@@ -86,13 +86,33 @@ async function main() {
   cek("uraian terisi di kolom", nilaiInput.includes("Sewa kendaraan") && nilaiInput.includes("Perjalanan dinas"), JSON.stringify(nilaiInput.slice(0, 8)));
   cek("total pagu tampil", /150\.000\.000/.test(teks()), teks().slice(0, 200));
 
-  const angka = Array.from(document.querySelectorAll('input[inputmode="numeric"]')) as HTMLInputElement[];
-  cek("dua kolom angka per baris", angka.length === 4, String(angka.length));
+  const bungkus = (i: HTMLInputElement) => (i.parentElement?.textContent ?? "").trim();
+  const semuaAngka = Array.from(document.querySelectorAll('input[inputmode="numeric"]')) as HTMLInputElement[];
+  const angka = semuaAngka.filter((i) => /^(Pagu|Realisasi) /.test(i.getAttribute("aria-label") ?? ""));
+  cek("dua kolom angka per baris", angka.length === 4, `${angka.length} / ${semuaAngka.length}`);
+  cek(
+    "sel uang di tabel lain juga ikut berformat Rp",
+    semuaAngka.length > 4 && semuaAngka.filter((i) => /kolom (Pagu|Realisasi|Sisa|Nilai|Jumlah)/.test(i.getAttribute("aria-label") ?? "")).every((i) => bungkus(i).startsWith("Rp")),
+    JSON.stringify(semuaAngka.map((i) => [i.value, bungkus(i)])),
+  );
+
+  /* ---- format Rp otomatis: cukup ketik angka tanpa titik ---- */
+  cek("tiap isian angka berawalan Rp", angka.every((i) => bungkus(i).startsWith("Rp")), JSON.stringify(angka.map(bungkus)));
+  cek(
+    "angka dari sheet tampil dengan titik ribuan",
+    angka[0].value === "100.000.000" && angka[1].value === "25.000.000",
+    JSON.stringify(angka.map((i) => i.value)),
+  );
 
   /* ubah realisasi baris pertama: 25.000.000 → 40.000.000 */
   await act(async () => {
     await isi(angka[1], "40000000");
   });
+  cek(
+    "ketikan tanpa titik langsung berformat",
+    (document.querySelectorAll('input[inputmode="numeric"]')[1] as HTMLInputElement).value === "40.000.000",
+    (document.querySelectorAll('input[inputmode="numeric"]')[1] as HTMLInputElement).value,
+  );
   const simpan = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("Simpan")) as HTMLButtonElement;
   cek("tombol simpan aktif", !!simpan && !simpan.disabled, String(simpan?.disabled));
   await act(async () => {
@@ -130,7 +150,12 @@ async function main() {
   cek("tiga tabel terbaca", c().week!.tabelKeuangan.length === 3, JSON.stringify(c().week!.tabelKeuangan.map((x) => x.judul)));
 
   const semua = Array.from(document.querySelectorAll("input")) as HTMLInputElement[];
-  const target = semua.find((i) => i.value === "20000000");
+  cek(
+    "kolom Pagu tabel Rekapitulasi UP ikut berformat",
+    semua.some((i) => i.value === "100.000.000"),
+    JSON.stringify(semua.map((i) => i.value).slice(0, 16)),
+  );
+  const target = semua.find((i) => i.value === "20.000.000");
   cek("sel realisasi UP bisa diisi", !!target, JSON.stringify(semua.map((i) => i.value).slice(0, 12)));
   await act(async () => {
     if (target) await isi(target, "30000000");
@@ -169,7 +194,7 @@ async function main() {
   );
   cek("tombol simpan tabel tanpa perubahan nonaktif", tombolSimpanTabel("Pembayaran Melalui LS")!.disabled === true);
 
-  const selLs = (Array.from(document.querySelectorAll("input")) as HTMLInputElement[]).find((i) => i.value === "15000000");
+  const selLs = (Array.from(document.querySelectorAll("input")) as HTMLInputElement[]).find((i) => i.value === "15.000.000");
   cek("sel Pembayaran LS bisa diisi", !!selLs);
   await act(async () => {
     if (selLs) await isi(selLs, "17000000");

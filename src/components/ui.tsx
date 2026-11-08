@@ -1,4 +1,14 @@
-import { createContext, useCallback, useContext, useState, type ReactNode, type SVGProps } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SVGProps,
+} from "react";
 
 /* ---------------------------------- ikon ---------------------------------- */
 
@@ -114,6 +124,88 @@ export function SectionTitle({ title, sub, right }: { title: string; sub?: React
       </div>
       {right}
     </div>
+  );
+}
+
+/* ------------------------------ input rupiah ------------------------------ */
+
+/** Angka ribuan gaya Indonesia tanpa awalan: 11114038 → 11.114.038. */
+export const angkaRibu = (v: string) => {
+  const digit = (v || "").replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+  return digit ? digit.replace(/\B(?=(\d{3})+(?!\d))/g, ".") : "";
+};
+
+/** Digit murni — inilah nilai yang disimpan di aplikasi dan dikirim ke sheet. */
+export const hanyaDigit = (v: string) => (v || "").replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+
+/** Boleh diformat rupiah? kosong, angka polos, atau sudah bertitik / berawalan Rp. */
+export const berupaAngka = (v: string) => /^\s*(rp\.?\s*)?(\d+|\d{1,3}(\.\d{3})+)?\s*$/i.test(v || "");
+
+/**
+ * Isian uang: pegawai cukup mengetik `11114038`, tampilannya langsung `Rp 11.114.038`.
+ * Yang disimpan tetap digit murni (`11114038`) supaya sheet & perhitungan tidak berubah.
+ */
+export function InputRp({
+  value,
+  onChange,
+  className = "",
+  placeholder = "0",
+  warn = false,
+  ...p
+}: {
+  value: string;
+  onChange: (digit: string) => void;
+  className?: string;
+  placeholder?: string;
+  /** tandai sel yang belum disimpan (latar kuning) */
+  warn?: boolean;
+} & Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "className" | "placeholder">) {
+  const ref = useRef<HTMLInputElement>(null);
+  const ubah = (e: ChangeEvent<HTMLInputElement>) => {
+    const el = e.target;
+    const kursor = el.selectionStart ?? el.value.length;
+    /** berapa digit di kiri kursor — dipakai mengembalikan posisi setelah titik disisipkan */
+    const digitKiri = el.value.slice(0, kursor).replace(/\D/g, "").length;
+    onChange(hanyaDigit(el.value));
+    setTimeout(() => {
+      const inp = ref.current;
+      if (!inp || document.activeElement !== inp) return;
+      const s = inp.value;
+      let n = 0;
+      let pos = digitKiri === 0 ? 0 : s.length;
+      for (let i = 0; i < s.length; i++) {
+        if (/\d/.test(s[i])) n += 1;
+        if (n === digitKiri) {
+          pos = i + 1;
+          break;
+        }
+      }
+      try {
+        inp.setSelectionRange(pos, pos);
+      } catch {
+        /* abaikan: input lama tanpa dukungan seleksi */
+      }
+    }, 0);
+  };
+  return (
+    <span className="relative block">
+      <span aria-hidden className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-muted">
+        Rp
+      </span>
+      <input
+        {...p}
+        ref={ref}
+        value={angkaRibu(value)}
+        onChange={ubah}
+        inputMode="numeric"
+        placeholder={placeholder}
+        className={cx(
+          "w-full rounded-lg border py-1.5 pl-8 pr-2 text-right font-mono text-[12px] outline-none focus:border-brand",
+          warn ? "border-warn bg-warn-soft/40" : "border-line bg-white",
+          className,
+        )}
+      />
+    </span>
   );
 }
 

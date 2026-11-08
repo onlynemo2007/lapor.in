@@ -3,14 +3,30 @@ import { setKeuangan, setSelKeuangan, useApp } from "../lib/store";
 import { kodeInduk, parseAngka, rupiah, rupiahPendek, selKey, serapan, totalAnggaran, type TabelKeuangan } from "../lib/model";
 import { SCRIPT_VERSI } from "../lib/sheet";
 import { sisipBarisTabel } from "../lib/sisip";
-import { Btn, Card, I, Pill, SectionTitle, Spinner, cx, useToast } from "../components/ui";
+import {
+  Btn,
+  Card,
+  I,
+  InputRp,
+  Pill,
+  SectionTitle,
+  Spinner,
+  angkaRibu,
+  berupaAngka,
+  cx,
+  useToast,
+} from "../components/ui";
 import { StateGate } from "./common";
 import { jamSinkron } from "../lib/sync";
 
 type Draft = { uraian: string; pagu: string; realisasi: string };
 
 const angkaTeks = (n: number) => (n ? String(n) : "");
-const formatAngka = (v: string) => (v ? Number(v).toLocaleString("id-ID") : "");
+
+/** Kolom tabel bagian D yang isinya uang — diformat "Rp 11.114.038" saat diketik. */
+const KOLOM_UANG = /(pagu|realisasi|sisa|nilai|jumlah|nominal|anggaran|biaya|tarif|rupiah|saldo|debet|kredit)/i;
+const BUKAN_UANG = /(tanggal|tgl|kode|nomor|uraian|keterangan|penerima|nama|bulan|pekan|sikepo|epresensi|finger)/i;
+const kolomUang = (label: string) => KOLOM_UANG.test(label || "") && !BUKAN_UANG.test(label || "");
 
 export default function KeuanganView() {
   const { week, settings, updateWeek, reload, dibacaAt } = useApp();
@@ -274,30 +290,26 @@ export default function KeuanganView() {
                       <td className="py-2 pr-2">
                         {agregat ? (
                           <span className="block rounded-lg bg-paper px-2 py-1.5 text-right font-mono text-[12px] font-semibold text-muted">
-                            {formatAngka(angkaTeks(a.pagu)) || "0"}
+                            {angkaRibu(angkaTeks(a.pagu)) || "0"}
                           </span>
                         ) : (
-                          <input
-                            value={formatAngka(d.pagu)}
-                            onChange={(e) => set(a.kode, { pagu: e.target.value.replace(/[^\d]/g, "") })}
-                            inputMode="numeric"
-                            placeholder="0"
-                            className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-right font-mono text-[12px] outline-none focus:border-brand"
+                          <InputRp
+                            value={d.pagu}
+                            onChange={(pagu) => set(a.kode, { pagu })}
+                            aria-label={`Pagu ${a.uraian}`}
                           />
                         )}
                       </td>
                       <td className="py-2 pr-2">
                         {agregat ? (
                           <span className="block rounded-lg bg-paper px-2 py-1.5 text-right font-mono text-[12px] font-semibold text-muted">
-                            {formatAngka(angkaTeks(a.realisasi)) || "0"}
+                            {angkaRibu(angkaTeks(a.realisasi)) || "0"}
                           </span>
                         ) : (
-                          <input
-                            value={formatAngka(d.realisasi)}
-                            onChange={(e) => set(a.kode, { realisasi: e.target.value.replace(/[^\d]/g, "") })}
-                            inputMode="numeric"
-                            placeholder="0"
-                            className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-right font-mono text-[12px] outline-none focus:border-brand"
+                          <InputRp
+                            value={d.realisasi}
+                            onChange={(realisasi) => set(a.kode, { realisasi })}
+                            aria-label={`Realisasi ${a.uraian}`}
                           />
                         )}
                       </td>
@@ -394,15 +406,26 @@ export default function KeuanganView() {
                         );
                       return (
                         <td key={k.index} className="py-1.5 pr-2">
-                          <input
-                            value={nilai(kunci)}
-                            onChange={(e) => setSelDraft((d) => ({ ...d, [kunci]: e.target.value }))}
-                            placeholder="—"
-                            className={cx(
-                              "w-full min-w-[92px] rounded-lg border bg-white px-2 py-1.5 text-[12px] outline-none focus:border-brand",
-                              kotor ? "border-warn bg-warn-soft/40" : "border-line",
-                            )}
-                          />
+                          {kolomUang(k.label) && berupaAngka(nilai(kunci)) ? (
+                            /* kolom uang: ketik 11114038 → tampil Rp 11.114.038, yang disimpan tetap digit murni */
+                            <InputRp
+                              value={nilai(kunci)}
+                              onChange={(v) => setSelDraft((d) => ({ ...d, [kunci]: v }))}
+                              warn={kotor}
+                              className="min-w-[110px]"
+                              aria-label={`${t.judul} baris ${r.nomor} kolom ${k.label}`}
+                            />
+                          ) : (
+                            <input
+                              value={nilai(kunci)}
+                              onChange={(e) => setSelDraft((d) => ({ ...d, [kunci]: e.target.value }))}
+                              placeholder="—"
+                              className={cx(
+                                "w-full min-w-[92px] rounded-lg border bg-white px-2 py-1.5 text-[12px] outline-none focus:border-brand",
+                                kotor ? "border-warn bg-warn-soft/40" : "border-line",
+                              )}
+                            />
+                          )}
                         </td>
                       );
                     })}
