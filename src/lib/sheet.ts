@@ -14,6 +14,7 @@ import {
   formatPegawai,
   tanggalDariTeks,
   joinUraian,
+  kodeInduk,
   lampKey,
   norm,
   parseLampiran,
@@ -799,7 +800,15 @@ export type Payload = {
   presensi: { tanggal: string; idx: number; nilai: string[] }[];
   aplikasi: { tanggal: string; idx: number; nilai: string[] }[];
   /** bagian D — realisasi keuangan per kode kegiatan */
-  keuangan: { kode: string; uraian: string; pagu: number; realisasi: number; baris?: number }[];
+  keuangan: {
+    kode: string;
+    uraian: string;
+    pagu: number;
+    realisasi: number;
+    baris?: number;
+    /** baris rekap (Total/Program) yang selnya berisi rumus — diizinkan menimpa rumus dengan angka */
+    paksa?: boolean;
+  }[];
   /** bagian D — sel tabel keuangan lain (Rekapitulasi UP, LS, Rencana Penarikan, …) */
   sel: { baris: number; kolom: number; nilai: string; label?: string; labelKolom?: number }[];
   /** bagian D — baris baru yang disisipkan ke tabel keuangan (Rekapitulasi UP, Pembayaran LS, …) */
@@ -908,13 +917,22 @@ export function buildPayload(w: WeekData, token: string, oleh: string, hanyaBeru
     }
   });
   // bagian D: hanya baris yang diubah (atau semua saat kirim ulang penuh)
+  const indukAnggaran = kodeInduk(w.anggaran);
   w.anggaran.forEach((a) => {
     if (!a.kode) return;
     // baris agregat yang kebaca kosong (pagu & realisasi 0) tidak dikirim: jangan menimpa
     // angka/rumus di sheet dengan 0 hanya karena pembacaan belum lengkap.
     if (!a.pagu && !a.realisasi) return;
     if (inc(`R:${a.kode}`))
-      p.keuangan.push({ kode: a.kode, uraian: a.uraian, pagu: a.pagu, realisasi: a.realisasi, baris: a.baris });
+      p.keuangan.push({
+        kode: a.kode,
+        uraian: a.uraian,
+        pagu: a.pagu,
+        realisasi: a.realisasi,
+        baris: a.baris,
+        // baris rekap: pegawai memang mengubah sendiri angkanya, jadi rumus sheet boleh diganti
+        ...(indukAnggaran.has(a.kode) ? { paksa: true } : {}),
+      });
   });
   // sel tabel keuangan lain: kirim baris + kolom yang diubah, plus label baris sebagai pengaman
   Object.keys(w.dirty).forEach((dk) => {
@@ -965,6 +983,8 @@ export type ScriptResult = {
   konflik?: string[];
   /** sel yang sengaja tidak ditulis karena berisi rumus sheet atau akan ditimpa angka 0 */
   dilewati?: string[];
+  /** sel berumus yang rumusnya diganti angka karena pegawai mengubah baris rekap itu sendiri */
+  diganti?: string[];
   /** minggu itu sudah ditutup (baca-saja) */
   terkunci?: boolean;
   error?: string;
@@ -1023,7 +1043,7 @@ export async function kirimKeScript(url: string, payload: Payload, batasMs = 250
 }
 
 /** Versi kode Apps Script yang disalin dari aplikasi (harus sama dengan `VERSI` di skrip). */
-export const SCRIPT_VERSI = "2.2";
+export const SCRIPT_VERSI = "2.3";
 
 export type BuatTabResult = {
   ok: boolean;
@@ -1210,6 +1230,9 @@ export const APPS_SCRIPT = `/**
  * v2.2 pengamanan: nama pengisi wajib, batas ukuran & frekuensi kiriman, minggu lama
  * otomatis terkunci (baca-saja), aksi berisiko (buat tab, kirim ulang penuh) butuh PIN
  * admin dari Script Properties, dan tulisan tidak menimpa isian yang sudah diubah rekan.
+ * v2.3 baris rekap (Total/Program seperti 032.12.DL, 7948, 2378) boleh diubah dari aplikasi:
+ * kiriman bertanda paksa=true mengganti rumus sel itu dengan angka yang diketik, dan
+ * pergantian rumus dilaporkan terpisah (dilewati vs diganti) supaya tidak dikira gagal.
  *
  * PIN admin TIDAK ditulis di kode ini (kode ini disalin-tempel & bisa dibaca siapa saja):
  *   Apps Script → ikon gear (Project Settings) → Script Properties → Add:
@@ -1456,7 +1479,7 @@ function doPost(e) {
     }
 
     const m = petakan(sh), k = m.col;
-    let n = 0; const gagal = []; const konflik = []; const dilewati = [];
+    let n = 0; const gagal = []; const konflik = []; const dilewati = []; const diganti = [];
     const tulis = function (row, cols, vals, label) {
       if (!row) { gagal.push(label); return; }
       n += tulisBaris(sh, row, cols, vals);
@@ -1496,11 +1519,17 @@ function doPost(e) {
       const baris = m.Rkode[rapi(kode)];
       if (!baris) { gagal.push('keuangan ' + kode); return; }
       n += tulisBaris(sh, baris, [k.rKode, k.rUr], [kode, x.uraian]);
-      const lewPagu = tulisAngka(sh, baris, k.rPagu + 1, angkaNomor(x.pagu));
-      const lewReal = tulisAngka(sh, baris, k.rReal + 1, angkaNomor(x.realisasi));
-      n += (lewPagu ? 0 : 1) + (lewReal ? 0 : 1);
-      if (lewPagu || lewReal) {
-        const sebab = lewPagu === 'rumus' || lewReal === 'rumus' ? 'rumus sheet' : 'nilai 0';
+      // paksa = pegawai memang mengubah baris rekap (Total/Program) itu sendiri:
+      // rumusnya diganti angka yang diketik, dan itu dilaporkan terpisah (bukan dianggap gagal).
+      const paksa = x.paksa === true;
+      const lewPagu = tulisAngka(sh, baris, k.rPagu + 1, angkaNomor(x.pagu), paksa);
+      const lewReal = tulisAngka(sh, baris, k.rReal + 1, angkaNomor(x.realisasi), paksa);
+      const tertulis = function (lew) { return !lew || lew === 'rumusdiganti'; };
+      n += (tertulis(lewPagu) ? 1 : 0) + (tertulis(lewReal) ? 1 : 0);
+      if (lewPagu === 'rumusdiganti' || lewReal === 'rumusdiganti') diganti.push('keuangan ' + kode);
+      const lewat = [lewPagu, lewReal].filter(function (lew) { return lew && lew !== 'rumusdiganti'; });
+      if (lewat.length) {
+        const sebab = lewat.indexOf('rumus') >= 0 ? 'rumus sheet' : 'nilai 0';
         dilewati.push('keuangan ' + kode + ' (' + sebab + ')');
       }
     });
@@ -1526,7 +1555,7 @@ function doPost(e) {
     });
 
     if (n) catat(sh, d.oleh, n, gagal.length);
-    return keluar({ ok: true, versi: VERSI, ditulis: n, gagal: gagal, konflik: konflik, dilewati: dilewati });
+    return keluar({ ok: true, versi: VERSI, ditulis: n, gagal: gagal, konflik: konflik, dilewati: dilewati, diganti: diganti });
   } catch (err) {
     return keluar({ ok: false, error: String(err) });
   } finally {
@@ -1589,15 +1618,18 @@ function berumus(sh, row, col) {
  * - 'rumus'  : sel berisi rumus → dilewati (Total/Program tetap dihitung sheet)
  * - 'basi'   : nilai yang dikirim 0 padahal sel sekarang berisi angka lain → dilewati
  *              (pembacaan aplikasi belum lengkap; jangan hapus angka yang sudah ada)
+ * - 'rumusdiganti': sel berisi rumus tetapi dikirim dengan paksa=true (pegawai mengubah
+ *              baris rekap itu sendiri) → rumus diganti angka, dilaporkan lewat kolom diganti
  */
-function tulisAngka(sh, row, col, nilai) {
-  if (berumus(sh, row, col)) return 'rumus';
-  if (!nilai) {
+function tulisAngka(sh, row, col, nilai, paksa) {
+  const adaRumus = berumus(sh, row, col);
+  if (adaRumus && !paksa) return 'rumus';
+  if (!nilai && !paksa) {
     const kini = String(sh.getRange(row, col).getDisplayValue() || '').replace(/[^0-9-]/g, '');
     if (kini && kini !== '0') return 'basi';
   }
   sh.getRange(row, col).setValue(nilai);
-  return '';
+  return adaRumus ? 'rumusdiganti' : '';
 }
 
 /** Membaca struktur tab: bagian A–C, posisi kolom, tim, sub (Program/Monev), dan tanggal. */

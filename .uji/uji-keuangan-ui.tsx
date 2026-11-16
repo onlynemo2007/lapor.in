@@ -91,13 +91,17 @@ async function main() {
   const angka = semuaAngka.filter((i) => /^(Pagu|Realisasi) /.test(i.getAttribute("aria-label") ?? ""));
   cek("dua kolom angka per baris", angka.length === 4, `${angka.length} / ${semuaAngka.length}`);
   cek(
-    "sel uang di tabel lain juga ikut berformat Rp",
-    semuaAngka.length > 4 && semuaAngka.filter((i) => /kolom (Pagu|Realisasi|Sisa|Nilai|Jumlah)/.test(i.getAttribute("aria-label") ?? "")).every((i) => bungkus(i).startsWith("Rp")),
+    "isian angka tidak memakai awalan Rp",
+    semuaAngka.every((i) => !i.value.includes("Rp") && !bungkus(i).startsWith("Rp")),
     JSON.stringify(semuaAngka.map((i) => [i.value, bungkus(i)])),
+  );
+  cek(
+    "sel uang di tabel lain juga berformat titik",
+    semuaAngka.filter((i) => /kolom (Pagu|Realisasi|Sisa|Nilai|Jumlah)/.test(i.getAttribute("aria-label") ?? "")).every((i) => /\./.test(i.value)),
+    JSON.stringify(semuaAngka.map((i) => i.value)),
   );
 
   /* ---- format Rp otomatis: cukup ketik angka tanpa titik ---- */
-  cek("tiap isian angka berawalan Rp", angka.every((i) => bungkus(i).startsWith("Rp")), JSON.stringify(angka.map(bungkus)));
   cek(
     "angka dari sheet tampil dengan titik ribuan",
     angka[0].value === "100.000.000" && angka[1].value === "25.000.000",

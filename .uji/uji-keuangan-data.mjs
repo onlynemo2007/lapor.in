@@ -164,6 +164,17 @@ cek("nomor baris tetap dari sheet", gabung.anggaran.every((a) => typeof a.baris 
     t3.pagu === 300 && t3.realisasi === 120,
     JSON.stringify({ t3, rows: totalNol.anggaran.map((a) => [a.kode, a.pagu]) }),
   );
+
+  /* baris rekap yang diubah pegawai dikirim dengan paksa (rumus sheet boleh diganti) */
+  const ubah = setKeuangan(wInduk, "7948", { uraian: "Program 7948", pagu: 100, realisasi: 55 }, "Uji");
+  const pRekap = buildPayload(ubah, "tok", "Uji", true);
+  const barisRekap = pRekap.keuangan.find((x) => x.kode === "7948");
+  cek("baris rekap terkirim dengan paksa", !!barisRekap && barisRekap.paksa === true, JSON.stringify(pRekap.keuangan));
+  cek(
+    "baris rincian tidak memakai paksa",
+    pRekap.keuangan.filter((x) => x.kode !== "7948").every((x) => x.paksa !== true),
+    JSON.stringify(pRekap.keuangan),
+  );
 }
 
 const lulus = hasil.filter((h) => h.lulus).length;

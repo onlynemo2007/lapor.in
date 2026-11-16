@@ -11,7 +11,6 @@ import {
   Pill,
   SectionTitle,
   Spinner,
-  angkaRibu,
   berupaAngka,
   cx,
   useToast,
@@ -76,7 +75,6 @@ export default function KeuanganView() {
   );
 
   const berubah = baris.filter((a) => {
-    if (induk.has(a.kode)) return false; // baris agregat: angkanya dari rumus sheet
     const d = draft[a.kode];
     if (!d) return false;
     return d.uraian !== a.uraian || parseAngka(d.pagu) !== a.pagu || parseAngka(d.realisasi) !== a.realisasi;
@@ -105,6 +103,15 @@ export default function KeuanganView() {
     const pakaiSel = lingkup === "semua" ? selBerubah : lingkup === "anggaran" ? [] : selMilikTabel(lingkup);
     const kodeBerubah = pakaiKode ? berubah : [];
     if (!kodeBerubah.length && !pakaiSel.length) return;
+    // Baris rekap dihitung rumus sheet. Kalau diubah, rumusnya diganti angka manual — minta izin dulu.
+    const rekapBerubah = kodeBerubah.filter((a) => induk.has(a.kode));
+    if (rekapBerubah.length) {
+      const nama = rekapBerubah.map((a) => `${a.kode} ${a.uraian}`).join(", ");
+      const lanjut = window.confirm(
+        `Baris rekap berisi rumus jumlah otomatis di sheet:\n\n${nama}\n\nBila disimpan, RUMUS di sel itu diganti angka yang Anda ketik, sehingga angkanya tidak lagi mengikuti baris di bawahnya. Lanjutkan?`,
+      );
+      if (!lanjut) return;
+    }
     updateWeek((w) => {
       let next = w;
       kodeBerubah.forEach((a) => {
@@ -262,23 +269,29 @@ export default function KeuanganView() {
               </thead>
               <tbody>
                 {tampil.map((a) => {
-                  const agregat = induk.has(a.kode);
+                  const rekap = induk.has(a.kode);
                   const d = draft[a.kode] ?? { uraian: a.uraian, pagu: angkaTeks(a.pagu), realisasi: angkaTeks(a.realisasi) };
-                  const pagu = agregat ? a.pagu : parseAngka(d.pagu);
-                  const real = agregat ? a.realisasi : parseAngka(d.realisasi);
+                  const pagu = parseAngka(d.pagu);
+                  const real = parseAngka(d.realisasi);
                   const p = serapan(real, pagu);
-                  const kotor = !agregat && (d.uraian !== a.uraian || pagu !== a.pagu || real !== a.realisasi);
+                  const kotor = d.uraian !== a.uraian || pagu !== a.pagu || real !== a.realisasi;
                   return (
                     <tr key={a.kode} className={cx("border-b border-line/70 align-top", kotor && "bg-warn-soft/40")}>
                       <td className="py-2 pr-2 font-mono text-[11.5px] text-muted">
                         {a.kode}
-                        {agregat && <Pill className="ml-1.5">otomatis</Pill>}
+                        {rekap && (
+                          <Pill
+                            className="ml-1.5"
+                            tone="warn"
+                            title="Baris rekap: angkanya dijumlahkan rumus sheet. Boleh diubah — rumusnya akan diganti angka yang Anda ketik."
+                          >
+                            rekap
+                          </Pill>
+                        )}
                       </td>
                       <td className="py-2 pr-2">
-                        {agregat ? (
-                          <span className="block px-1.5 py-1 text-[12.5px] font-semibold" title="Dijumlahkan rumus sheet dari baris rincian di bawahnya">
-                            {a.uraian}
-                          </span>
+                        {rekap ? (
+                          <span className="block px-1.5 py-1 text-[12.5px] font-semibold">{a.uraian}</span>
                         ) : (
                           <input
                             value={d.uraian}
@@ -288,30 +301,15 @@ export default function KeuanganView() {
                         )}
                       </td>
                       <td className="py-2 pr-2">
-                        {agregat ? (
-                          <span className="block rounded-lg bg-paper px-2 py-1.5 text-right font-mono text-[12px] font-semibold text-muted">
-                            {angkaRibu(angkaTeks(a.pagu)) || "0"}
-                          </span>
-                        ) : (
-                          <InputRp
-                            value={d.pagu}
-                            onChange={(pagu) => set(a.kode, { pagu })}
-                            aria-label={`Pagu ${a.uraian}`}
-                          />
-                        )}
+                        <InputRp value={d.pagu} onChange={(v) => set(a.kode, { pagu: v })} aria-label={`Pagu ${a.uraian}`} warn={kotor} />
                       </td>
                       <td className="py-2 pr-2">
-                        {agregat ? (
-                          <span className="block rounded-lg bg-paper px-2 py-1.5 text-right font-mono text-[12px] font-semibold text-muted">
-                            {angkaRibu(angkaTeks(a.realisasi)) || "0"}
-                          </span>
-                        ) : (
-                          <InputRp
-                            value={d.realisasi}
-                            onChange={(realisasi) => set(a.kode, { realisasi })}
-                            aria-label={`Realisasi ${a.uraian}`}
-                          />
-                        )}
+                        <InputRp
+                          value={d.realisasi}
+                          onChange={(v) => set(a.kode, { realisasi: v })}
+                          aria-label={`Realisasi ${a.uraian}`}
+                          warn={kotor}
+                        />
                       </td>
                       <td className="py-2 pr-2 text-right font-mono text-[12px] text-muted">
                         {pagu || real ? (pagu - real).toLocaleString("id-ID") : "—"}
@@ -341,8 +339,9 @@ export default function KeuanganView() {
 
         {baris.length > 0 && (
           <p className="mt-3 text-[11.5px] leading-relaxed text-muted">
-            Ringkas: pagu {rupiahPendek(total.pagu)} · realisasi {rupiahPendek(total.realisasi)}. Kolom{" "}
-            <b>Total</b> di sheet tetap memakai rumusnya sendiri — aplikasi hanya menulis baris kegiatan yang Anda ubah.
+            Ringkas: pagu {rupiahPendek(total.pagu)} · realisasi {rupiahPendek(total.realisasi)}. Semua baris bisa
+            diisi. Baris berlabel <b>rekap</b> (Total/Program) dihitung rumus sheet: kalau Anda ubah, rumusnya diganti
+            angka yang Anda ketik dan aplikasi meminta konfirmasi lebih dulu.
           </p>
         )}
       </Card>

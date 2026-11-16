@@ -5,13 +5,14 @@ import { Btn, I, Logo, Spinner, cx } from "./ui";
 import { StatusSinkron } from "./SyncBadge";
 import { PeringatanKoneksi, PeringatanMinggu } from "./Koneksi";
 
-export type View = "dashboard" | "isi" | "presensi" | "keuangan" | "pratinjau" | "sinkron";
+export type View = "dashboard" | "isi" | "presensi" | "keuangan" | "wfh" | "pratinjau" | "sinkron";
 
 export const NAV: { id: View; label: string; short: string; icon: keyof typeof I }[] = [
   { id: "dashboard", label: "Dashboard", short: "Dashboard", icon: "home" },
   { id: "isi", label: "Isi Laporan", short: "Isi", icon: "pen" },
   { id: "presensi", label: "Presensi", short: "Presensi", icon: "users" },
   { id: "keuangan", label: "Realisasi Keuangan", short: "Keuangan", icon: "money" },
+  { id: "wfh", label: "Laporan WFH", short: "WFH", icon: "wfh" },
   { id: "pratinjau", label: "Pratinjau & Cetak", short: "Pratinjau", icon: "doc" },
   { id: "sinkron", label: "Sinkronisasi", short: "Sinkron", icon: "sync" },
 ];
@@ -198,16 +199,16 @@ export default function Shell({ view, children }: { view: View; children: ReactN
 
       {/* bottom nav (HP) */}
       <nav className="no-print fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
-        <div className="grid grid-cols-6">
+        <div className="grid grid-cols-7">
           {NAV.map((n) => {
             const Icon = I[n.icon];
             const on = view === n.id;
             return (
-              <a key={n.id} href={`#/${n.id}`} className={cx("relative flex flex-col items-center gap-1 py-2.5 text-[10.5px] font-semibold", on ? "text-ink" : "text-muted")}>
+              <a key={n.id} href={`#/${n.id}`} className={cx("relative flex min-w-0 flex-col items-center gap-1 px-0.5 py-2.5 text-[9.5px] font-semibold", on ? "text-ink" : "text-muted")}>
                 <span className={cx("grid h-8 w-12 place-items-center rounded-full transition-colors", on && "bg-brand-soft text-brand")}>
                   <Icon className="h-[19px] w-[19px]" />
                 </span>
-                {n.short}
+                <span className="max-w-full truncate">{n.short}</span>
                 {n.id === "sinkron" && pendingCount > 0 && (
                   <span className={cx("absolute right-[calc(50%-22px)] top-1.5 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[9px] font-bold text-white", gagalSinkron ? "bg-bad" : "bg-warn")}>
                     {pendingCount}

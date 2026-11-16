@@ -5,6 +5,7 @@ import DashboardView from "./views/DashboardView";
 import IsiView from "./views/IsiView";
 import PresensiView from "./views/PresensiView";
 import KeuanganView from "./views/KeuanganView";
+import WfhView from "./views/WfhView";
 import PratinjauView from "./views/PratinjauView";
 import SinkronView from "./views/SinkronView";
 
@@ -16,6 +17,7 @@ function Router() {
       {view === "isi" && <IsiView params={params} />}
       {view === "presensi" && <PresensiView />}
       {view === "keuangan" && <KeuanganView />}
+      {view === "wfh" && <WfhView />}
       {view === "pratinjau" && <PratinjauView />}
       {view === "sinkron" && <SinkronView params={params} />}
     </Shell>

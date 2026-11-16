@@ -111,6 +111,25 @@ bila ada baris/kolom yang disisipkan. Kolom lampiran dikenali dari judul kolomny
 yang berisi tautan), jadi tab baru yang masih kosong tetap ditulisi di kolom yang benar. Setiap kiriman
 dicatat di tab tersembunyi `_audit`.
 
+## Baris rekap bagian D (Apps Script v2.3)
+
+Baris rekap di tabel Realisasi Anggaran (mis. `032.12.DL`, `7948`, `2378`, `2378.EBA`, baris
+`Total`) boleh diisi dari aplikasi. Karena sel itu biasanya berisi rumus jumlah di sheet:
+
+- aplikasi meminta konfirmasi lebih dulu (rumus akan diganti angka yang diketik);
+- kiriman diberi tanda `paksa: true`, sehingga skrip **hanya** mengganti rumus pada baris yang
+  benar-benar diubah pengguna — baris lain tetap dilindungi (angka 0 tidak menimpa isian lama);
+- pergantian rumus dilaporkan terpisah (`diganti`) dari kegagalan, jadi tidak dikira gagal kirim.
+
+Skrip **v2.3** wajib dipasang agar `paksa` dihormati; pada v2.2 baris rekap tetap dilaporkan
+"tidak ditimpa".
+
+## Menu Laporan WFH
+
+Sidebar punya menu **Laporan WFH** yang membuka formulir WFH tim (`src/lib/wfh.ts`,
+tautan bisa diganti dari halaman itu, tersimpan di `settings.wfhUrl`). Google menolak aplikasi
+Apps Script ditampilkan dalam iframe, sehingga formulir dibuka di tab baru dari menu ini.
+
 ## Pengamanan (Apps Script v2.2)
 
 Isian tetap boleh dikirim kapan saja (pagi, malam, akhir pekan) — yang dibatasi adalah **periode**,

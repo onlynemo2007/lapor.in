@@ -41,6 +41,7 @@ export const I = {
   link: ic(<><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" /><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></>),
   print: ic(<><path d="M7 9V3.5h10V9" /><rect x="3.5" y="9" width="17" height="8" rx="2" /><path d="M7 14.5h10v6H7z" /></>),
   sheet: ic(<><rect x="3.5" y="3.5" width="17" height="17" rx="2.5" /><path d="M3.5 9.5h17M9.5 9.5v11M3.5 15h17" /></>),
+  wfh: ic(<><path d="M3.5 10.5 12 4l8.5 6.5" /><path d="M5.5 9v10.5h13V9" /><path d="M9 15h6M9 12h6" /></>),
   chev: ic(<path d="m9 5.5 6.5 6.5L9 18.5" />),
   down: ic(<path d="m5.5 9 6.5 6.5L18.5 9" />),
   alert: ic(<><path d="M12 4 2.8 19.5h18.4Z" /><path d="M12 10v4.2M12 17v.01" /></>),
@@ -94,9 +95,20 @@ export function Btn({ variant = "primary", size = "md", className = "", ...p }: 
   );
 }
 
-export function Pill({ tone = "neutral", children, className = "" }: { tone?: "neutral" | "brand" | "warn" | "bad"; children: ReactNode; className?: string }) {
+export function Pill({
+  tone = "neutral",
+  children,
+  className = "",
+  title,
+}: {
+  tone?: "neutral" | "brand" | "warn" | "bad";
+  children: ReactNode;
+  className?: string;
+  title?: string;
+}) {
   return (
     <span
+      title={title}
       className={cx(
         "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
         tone === "neutral" && "bg-paper text-muted",
@@ -142,7 +154,8 @@ export const hanyaDigit = (v: string) => (v || "").replace(/\D/g, "").replace(/^
 export const berupaAngka = (v: string) => /^\s*(rp\.?\s*)?(\d+|\d{1,3}(\.\d{3})+)?\s*$/i.test(v || "");
 
 /**
- * Isian uang: pegawai cukup mengetik `11114038`, tampilannya langsung `Rp 11.114.038`.
+ * Isian uang: pegawai cukup mengetik `11114038`, tampilannya langsung `11.114.038`
+ * (titik ribuan otomatis, tanpa awalan "Rp" — satuannya sudah ada di judul kolom).
  * Yang disimpan tetap digit murni (`11114038`) supaya sheet & perhitungan tidak berubah.
  */
 export function InputRp({
@@ -188,24 +201,19 @@ export function InputRp({
     }, 0);
   };
   return (
-    <span className="relative block">
-      <span aria-hidden className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-muted">
-        Rp
-      </span>
-      <input
-        {...p}
-        ref={ref}
-        value={angkaRibu(value)}
-        onChange={ubah}
-        inputMode="numeric"
-        placeholder={placeholder}
-        className={cx(
-          "w-full rounded-lg border py-1.5 pl-8 pr-2 text-right font-mono text-[12px] outline-none focus:border-brand",
-          warn ? "border-warn bg-warn-soft/40" : "border-line bg-white",
-          className,
-        )}
-      />
-    </span>
+    <input
+      {...p}
+      ref={ref}
+      value={angkaRibu(value)}
+      onChange={ubah}
+      inputMode="numeric"
+      placeholder={placeholder}
+      className={cx(
+        "w-full rounded-lg border bg-white px-2 py-1.5 text-right font-mono text-[12px] outline-none focus:border-brand",
+        warn ? "border-warn bg-warn-soft/40" : "border-line",
+        className,
+      )}
+    />
   );
 }
 

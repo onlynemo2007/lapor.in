@@ -31,6 +31,8 @@ export type Settings = {
   pinAdmin?: string;
   activeGid: string;
   extraTabs: Tab[];
+  /** tautan aplikasi Laporan WFH (kosong = pakai tautan bawaan) */
+  wfhUrl?: string;
 };
 
 type Persisted = {
@@ -60,6 +62,7 @@ const defaultSettings: Settings = {
   pinAdmin: "",
   activeGid: DEFAULT_TABS[0].gid,
   extraTabs: [],
+  wfhUrl: "",
 };
 
 /** Koneksi Apps Script tersimpan sendiri; null berarti belum pernah disimpan. */
@@ -397,6 +400,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (r.gagal?.length) gagalBaris.push(...r.gagal);
           // sel berumus / angka 0 yang tidak ditimpa — informasikan, jangan diamkan
           if (r.dilewati?.length) gagalBaris.push(...r.dilewati.map((x) => `${x} — tidak ditimpa`));
+          // baris rekap yang rumusnya diganti angka manual — beri tahu sekali, bukan diam-diam
+          if (r.diganti?.length)
+            gagalBaris.push(...r.diganti.map((x) => `${x} — rumus sheet diganti angka manual`));
           catatLog({
             at,
             ok: true,

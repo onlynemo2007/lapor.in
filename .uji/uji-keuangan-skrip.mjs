@@ -56,7 +56,7 @@ function isiTab() {
 {
   const env = lingkunganDari(isiTab());
   const a = api(env);
-  cek("versi skrip terbaru", a.VERSI === "2.2", a.VERSI);
+  cek("versi skrip terbaru", a.VERSI === "2.3", a.VERSI);
 
   const r = post(a, {
     token: a.TOKEN,
@@ -84,6 +84,50 @@ function isiTab() {
   cek("nilai teks berformat rupiah dinormalkan", env.sumber.get(4, 5) === 12500000, String(env.sumber.get(4, 5)));
 }
 
+
+
+/* ---------- v2.3: baris rekap berumus hanya ditimpa bila kiriman memakai paksa ---------- */
+function isiTabRekap() {
+  const g = [];
+  const isi = (row, col, val) => {
+    while (g.length < row) g.push([]);
+    const r = g[row - 1];
+    while (r.length < col) r.push("");
+    r[col - 1] = val;
+  };
+  isi(1, 1, "LAPORAN MINGGU I BULAN NOVEMBER 2026");
+  isi(2, 3, "D");
+  isi(2, 4, "REALISASI KEUANGAN");
+  ["No", "Kode", "Uraian", "Pagu", "Realisasi"].forEach((t, i) => isi(3, i + 1, t));
+  isi(4, 1, 1); isi(4, 2, "032.12.01"); isi(4, 3, "Perjalanan dinas"); isi(4, 4, 100000000); isi(4, 5, 25000000);
+  isi(5, 1, 2); isi(5, 2, "032.12.02"); isi(5, 3, "Sewa kendaraan"); isi(5, 4, 50000000); isi(5, 5, 10000000);
+  isi(6, 2, "032.12.99"); isi(6, 3, "Total"); isi(6, 4, "=SUM(D4:D5)"); isi(6, 5, "=SUM(E4:E5)");
+  return g;
+}
+
+{
+  const env = lingkunganDari(isiTabRekap());
+  const a = api(env);
+
+  /* tanpa paksa: rumus tetap dilindungi */
+  const r1 = post(a, {
+    token: a.TOKEN,
+    gid: GID,
+    keuangan: [{ kode: "032.12.99", uraian: "Total", pagu: 150000000, realisasi: 35000000 }],
+  });
+  cek("baris rekap berumus tetap dilindungi", r1.dilewati.length === 1 && env.sumber.get(6, 5) === "=SUM(E4:E5)", JSON.stringify({ r1, sel: env.sumber.get(6, 5) }));
+
+  /* dengan paksa: rumus diganti angka & dilaporkan sebagai diganti (bukan gagal) */
+  const r2 = post(a, {
+    token: a.TOKEN,
+    gid: GID,
+    keuangan: [{ kode: "032.12.99", uraian: "Total", pagu: 150000000, realisasi: 35500000, paksa: true }],
+  });
+  cek("paksa menulis angka ke sel berumus", env.sumber.get(6, 5) === 35500000 && typeof env.sumber.get(6, 5) === "number", JSON.stringify(env.sumber.get(6, 5)));
+  cek("pagu rekap ikut ditulis", env.sumber.get(6, 4) === 150000000, JSON.stringify(env.sumber.get(6, 4)));
+  cek("pergantian rumus dilaporkan terpisah", r2.diganti.length === 1 && /032\.12\.99/.test(r2.diganti[0]) && r2.dilewati.length === 0, JSON.stringify({ diganti: r2.diganti, dilewati: r2.dilewati }));
+  cek("rumus yang diganti tidak dianggap gagal", r2.gagal.length === 0, JSON.stringify(r2.gagal));
+}
 
 /* ---------- sisip baris baru di tabel keuangan (v2.0) ---------- */
 function isiTabTabel() {

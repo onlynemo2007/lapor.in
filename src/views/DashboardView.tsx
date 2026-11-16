@@ -3,6 +3,7 @@ import { useApp } from "../lib/store";
 import { SLOT_ROWS, TIMS, TOTAL_PEGAWAI, hariDari, norm, rupiahPendek, ringkas, slotAda, slotKey, slotLabel, tanggalPendek } from "../lib/model";
 import { go } from "../components/Shell";
 import { jamSinkron } from "../lib/sync";
+import { tautanWfh } from "../lib/wfh";
 import { Btn, Card, I, Pill, Progress, SectionTitle, Spinner, cx } from "../components/ui";
 import { StateGate } from "./common";
 
@@ -419,6 +420,33 @@ export default function DashboardView() {
           )}
         </Card>
       </div>
+
+      {/* laporan WFH */}
+      <Card className="p-5">
+        <SectionTitle
+          title="Laporan WFH"
+          sub="Formulir kerja dari rumah untuk pegawai Dukman"
+          right={
+            <Btn variant="ghost" size="sm" onClick={() => go("wfh")}>
+              Buka menu <I.chev className="h-3.5 w-3.5" />
+            </Btn>
+          }
+        />
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="min-w-[240px] flex-1 text-[12.5px] leading-relaxed text-muted">
+            Identitas pegawai cukup diisi sekali, lalu laporan kegiatan harian dikirim dari HP. Tautannya sudah
+            disiapkan di menu <b>Laporan WFH</b> — tidak perlu lagi menyimpan tautan sendiri.
+          </p>
+          <a
+            href={tautanWfh(settings.wfhUrl)}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-[13px] font-bold text-white transition hover:bg-brand-dark"
+          >
+            <I.pen className="h-4 w-4" /> Isi formulir WFH
+          </a>
+        </div>
+      </Card>
     </div>
   );
 }
