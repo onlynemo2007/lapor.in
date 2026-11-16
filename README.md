@@ -127,25 +127,30 @@ Skrip **v2.3** wajib dipasang agar `paksa` dihormati; pada v2.2 baris rekap teta
 ## Halaman pilih saat alamat utama dibuka
 
 Membuka alamat utama (`/` tanpa hash) menampilkan **halaman pilih** (bukan langsung dashboard): dua kartu,
-**Laporan Mingguan** dan **Laporan WFH**, masing-masing dengan alamat sendiri sehingga bisa disimpan sebagai
-bookmark atau dibagikan:
+**Laporan Mingguan** (menu di aplikasi ini) dan **Laporan WFH** (aplikasi Apps Script terpisah, dibuka di tab
+baru). Alamat aplikasi ini:
 
 | Alamat | Isi |
 | --- | --- |
 | `/` (tanpa hash) | halaman pilih — tanpa sidebar |
 | `/#/isi` | langsung ke Isi laporan mingguan |
-| `/#/wfh` | langsung ke halaman Laporan WFH |
 | `/#/dashboard` | dashboard (rekap, pratinjau, sinkronisasi lewat menu) |
 
 Logikanya di `src/lib/rute.ts` (`ruteDariHash`, `VIEW_AWAL`); halaman pilih ada di `src/views/LandingView.tsx`
 dan dirender di luar `Shell` (`src/App.tsx`). Hash tak dikenal juga diarahkan ke halaman pilih, bukan halaman kosong.
 Logo di sidebar, logo di bilah atas HP, dan tautan **Halaman pilih** di kaki sidebar membawa kembali ke `/`.
 
-## Menu Laporan WFH
+## Tautan aplikasi Laporan WFH
 
-Sidebar punya menu **Laporan WFH** yang membuka formulir WFH tim (`src/lib/wfh.ts`,
-tautan bisa diganti dari halaman itu, tersimpan di `settings.wfhUrl`). Google menolak aplikasi
-Apps Script ditampilkan dalam iframe, sehingga formulir dibuka di tab baru dari menu ini.
+Aplikasi **Laporan WFH Pegawai** (Google Apps Script) sengaja **tidak** dijadikan menu di dashboard
+ini — ia berdiri sendiri. Tautannya hanya muncul sebagai kartu kedua di halaman pilih
+(`src/views/LandingView.tsx`) dan langsung membuka formulir WFH di tab baru (Google menolak
+aplikasi Apps Script ditampilkan dalam iframe).
+
+- Alamat formulir: `WFH_URL_BAWAAN` di `src/lib/wfh.ts` (satu-satunya tempat yang perlu diubah
+  bila alamat formulir berganti).
+- Tautan lama `…/#/wfh` tidak lagi punya halaman sendiri; alamat itu jatuh ke halaman pilih,
+  di mana kartu Laporan WFH tetap tersedia.
 
 ## Pengamanan (Apps Script v2.2)
 
@@ -202,5 +207,5 @@ tetap dipertahankan saat pembacaan ulang (tidak tertimpa).
 | `src/lib/sheet.ts` | Parser CSV tab, penulisan & pembuatan tab via Apps Script, kode `Kode.gs` siap tempel |
 | `src/lib/sync.ts` | Mesin sinkron: paket kiriman, penanda terkirim, verifikasi |
 | `src/lib/store.tsx` | State aplikasi + pengatur sinkron otomatis (jeda, ulang, offline) |
-| `src/lib/rute.ts` | Routing hash: alamat utama = halaman pilih, `#/isi`, `#/wfh`, `#/dashboard` |
-| `src/views/` | Halaman pilih (landing), Dashboard, Isi laporan, Presensi, WFH, Pratinjau, Sinkronisasi |
+| `src/lib/rute.ts` | Routing hash: alamat utama = halaman pilih, `#/isi`, `#/dashboard` |
+| `src/views/` | Halaman pilih (landing), Dashboard, Isi laporan, Presensi, Pratinjau, Sinkronisasi |

@@ -1,10 +1,11 @@
 import { I, Logo, Pill, cx } from "../components/ui";
-import { ALAMAT_MINGGUAN, ALAMAT_WFH } from "../lib/rute";
+import { ALAMAT_MINGGUAN } from "../lib/rute";
+import { WFH_URL_BAWAAN, tautanWfhPendek } from "../lib/wfh";
 
 /**
  * Halaman pilih (landing) — tampil setiap kali alamat utama Lapor.in dibuka
- * tanpa hash. Pegawai memilih dulu: Laporan Mingguan atau Laporan WFH.
- * Kedua pilihan punya alamat sendiri (#/isi dan #/wfh), jadi bisa dibagikan.
+ * tanpa hash. Pegawai memilih dulu: Laporan Mingguan (menu di aplikasi ini)
+ * atau Laporan WFH (aplikasi Google Apps Script tersendiri, dibuka di tab baru).
  */
 const PILIHAN = [
   {
@@ -21,14 +22,15 @@ const PILIHAN = [
   },
   {
     id: "wfh",
-    href: ALAMAT_WFH,
+    href: WFH_URL_BAWAAN,
     Ikon: I.wfh,
     nomor: "02",
     judul: "Laporan WFH",
-    ringkas: "Formulir kerja dari rumah (WFH) pegawai, terpisah dari laporan mingguan.",
+    ringkas: "Formulir kerja dari rumah (WFH) pegawai — aplikasi tersendiri, di luar dashboard ini.",
     rincian: ["Identitas cukup diisi sekali", "Kegiatan harian selama WFH", "Masuk ke spreadsheet WFH"],
-    aksi: "Isi laporan WFH",
-    alamat: "…/#/wfh",
+    aksi: "Buka formulir WFH",
+    alamat: tautanWfhPendek(WFH_URL_BAWAAN),
+    luar: true,
     tone: "neutral" as const,
   },
 ];
@@ -63,11 +65,13 @@ export default function LandingView() {
         </p>
 
         <div className="mt-6 grid gap-3.5 sm:mt-7 sm:grid-cols-2 sm:gap-4">
-          {PILIHAN.map(({ id, href, Ikon, nomor, judul, ringkas, rincian, aksi, alamat, tone }) => (
+          {PILIHAN.map(({ id, href, Ikon, nomor, judul, ringkas, rincian, aksi, alamat, tone, luar }) => (
             <a
               key={id}
               href={href}
               data-pilihan={id}
+              data-luar={luar ? "1" : undefined}
+              {...(luar ? { target: "_blank", rel: "noreferrer" } : {})}
               className={cx(
                 "group flex flex-col rounded-2xl border bg-white p-5 transition-all duration-150",
                 "hover:-translate-y-0.5 hover:shadow-[0_10px_30px_-18px_rgba(17,20,18,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
@@ -99,8 +103,11 @@ export default function LandingView() {
                 ))}
               </ul>
 
-              <span className="mt-4 flex items-center justify-between border-t border-line pt-3.5">
-                <span className="text-[13.5px] font-bold text-ink">{aksi}</span>
+              <span className="mt-4 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-line pt-3.5">
+                <span className="text-[13.5px] font-bold text-ink">
+                  {aksi}
+                  {luar && <span className="ml-1.5 font-semibold text-[11.5px] text-muted">· tab baru</span>}
+                </span>
                 <span className="font-mono text-[10.5px] text-muted">{alamat}</span>
               </span>
             </a>
@@ -109,15 +116,12 @@ export default function LandingView() {
 
         <div className="mt-5 rounded-2xl border border-line bg-white p-4 text-[12.5px] leading-relaxed text-muted">
           <p>
-            <b className="text-ink">Tautan langsung.</b> Buka{" "}
+            <b className="text-ink">Tautan langsung.</b> Simpan{" "}
             <a href="#/isi" className="rounded bg-paper px-1.5 py-0.5 font-mono text-[11.5px] text-ink hover:text-brand">
               #/isi
             </a>{" "}
-            untuk laporan mingguan atau{" "}
-            <a href="#/wfh" className="rounded bg-paper px-1.5 py-0.5 font-mono text-[11.5px] text-ink hover:text-brand">
-              #/wfh
-            </a>{" "}
-            untuk laporan WFH — keduanya langsung masuk ke menunya, tanpa melewati halaman ini.
+            untuk laporan mingguan — langsung masuk ke menu isian tanpa melewati halaman ini. Laporan WFH berdiri
+            sendiri sebagai aplikasi (Google Apps Script), jadi tautannya dibagikan langsung dari kartu di atas.
           </p>
           <p className="mt-2">
             Data pegawai tersimpan di perangkat ini, dan setiap isian langsung dikirim ke spreadsheet. Di dalam aplikasi,

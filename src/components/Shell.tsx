@@ -6,14 +6,13 @@ import { StatusSinkron } from "./SyncBadge";
 import { PeringatanKoneksi, PeringatanMinggu } from "./Koneksi";
 import { VIEW_AWAL, ruteDariHash } from "../lib/rute";
 
-export type View = typeof VIEW_AWAL | "dashboard" | "isi" | "presensi" | "keuangan" | "wfh" | "pratinjau" | "sinkron";
+export type View = typeof VIEW_AWAL | "dashboard" | "isi" | "presensi" | "keuangan" | "pratinjau" | "sinkron";
 
 export const NAV: { id: View; label: string; short: string; icon: keyof typeof I }[] = [
   { id: "dashboard", label: "Dashboard", short: "Dashboard", icon: "home" },
   { id: "isi", label: "Isi Laporan", short: "Isi", icon: "pen" },
   { id: "presensi", label: "Presensi", short: "Presensi", icon: "users" },
   { id: "keuangan", label: "Realisasi Keuangan", short: "Keuangan", icon: "money" },
-  { id: "wfh", label: "Laporan WFH", short: "WFH", icon: "wfh" },
   { id: "pratinjau", label: "Pratinjau & Cetak", short: "Pratinjau", icon: "doc" },
   { id: "sinkron", label: "Sinkronisasi", short: "Sinkron", icon: "sync" },
 ];
@@ -21,7 +20,7 @@ export const NAV: { id: View; label: string; short: string; icon: keyof typeof I
 /* --------------------------------- routing --------------------------------- */
 
 export function parseHash(): { view: View; params: URLSearchParams } {
-  // Alamat utama tanpa hash = halaman pilih (Laporan Mingguan atau WFH).
+  // Alamat utama tanpa hash = halaman pilih (Laporan Mingguan / aplikasi WFH).
   return ruteDariHash(window.location.hash, NAV.map((n) => n.id)) as { view: View; params: URLSearchParams };
 }
 
@@ -57,7 +56,7 @@ export default function Shell({ view, children }: { view: View; children: ReactN
       <aside className="no-print fixed inset-y-0 left-0 z-40 hidden w-[248px] flex-col border-r border-line bg-white lg:flex">
         <a
           href="#/"
-          title="Kembali ke halaman pilih (Laporan Mingguan / WFH)"
+          title="Kembali ke halaman pilih (Laporan Mingguan / Laporan WFH)"
           className="flex items-center gap-2.5 rounded-xl px-5 pb-4 pt-5 transition-opacity hover:opacity-80"
         >
           <Logo className="h-8 w-8" />
@@ -211,7 +210,7 @@ export default function Shell({ view, children }: { view: View; children: ReactN
 
       {/* bottom nav (HP) */}
       <nav className="no-print fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
-        <div className="grid grid-cols-7">
+        <div className="grid grid-cols-6">
           {NAV.map((n) => {
             const Icon = I[n.icon];
             const on = view === n.id;

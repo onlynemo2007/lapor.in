@@ -1,10 +1,9 @@
 /**
- * Routing sederhana berbasis hash: #/dashboard, #/isi, #/wfh, …
+ * Routing sederhana berbasis hash: #/dashboard, #/isi, #/presensi, …
  *
  * Alamat utama tanpa hash (…/) berarti HALAMAN PILIH (landing), bukan dashboard:
- * pegawai diminta memilih dulu mau mengisi Laporan Mingguan atau Laporan WFH.
- * Setiap pilihan tetap punya alamatnya sendiri (…/#/isi dan …/#/wfh) sehingga
- * bisa disimpan sebagai bookmark atau dibagikan lewat WhatsApp grup tim.
+ * pegawai memilih dulu mau mengisi Laporan Mingguan (menu di aplikasi ini) atau
+ * Laporan WFH (aplikasi Google Apps Script terpisah, dibuka di tab baru).
  */
 
 /** Halaman pembuka (di luar daftar menu, tampil tanpa sidebar). */
@@ -12,7 +11,6 @@ export const VIEW_AWAL = "awal";
 
 export const ALAMAT_PILIH = "#/";
 export const ALAMAT_MINGGUAN = "#/isi";
-export const ALAMAT_WFH = "#/wfh";
 
 export type Rute = { view: string; params: URLSearchParams };
 

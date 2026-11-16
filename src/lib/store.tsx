@@ -31,8 +31,6 @@ export type Settings = {
   pinAdmin?: string;
   activeGid: string;
   extraTabs: Tab[];
-  /** tautan aplikasi Laporan WFH (kosong = pakai tautan bawaan) */
-  wfhUrl?: string;
 };
 
 type Persisted = {
@@ -62,7 +60,6 @@ const defaultSettings: Settings = {
   pinAdmin: "",
   activeGid: DEFAULT_TABS[0].gid,
   extraTabs: [],
-  wfhUrl: "",
 };
 
 /** Koneksi Apps Script tersimpan sendiri; null berarti belum pernah disimpan. */
