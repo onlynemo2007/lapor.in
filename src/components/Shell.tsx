@@ -5,6 +5,7 @@ import { Btn, I, Logo, Spinner, cx } from "./ui";
 import { StatusSinkron } from "./SyncBadge";
 import { PeringatanKoneksi, PeringatanMinggu } from "./Koneksi";
 import { VIEW_AWAL, ruteDariHash } from "../lib/rute";
+import { SCRIPT_VERSI } from "../lib/sheet";
 
 export type View = typeof VIEW_AWAL | "dashboard" | "isi" | "presensi" | "keuangan" | "pratinjau" | "sinkron";
 
@@ -269,6 +270,7 @@ function KunciMinggu({ onClose }: { onClose: () => void }) {
     week,
     admin,
     mingguTerbaru,
+    versiSkrip,
     terkunciGid,
     aturKunciMinggu,
     masukAdmin,
@@ -375,6 +377,14 @@ function KunciMinggu({ onClose }: { onClose: () => void }) {
           </ul>
           {tabs.length > 12 && (
             <p className="mt-2 text-[11px] text-muted">Menampilkan 12 tab terbaru dari {tabs.length} tab.</p>
+          )}
+
+          {!!versiSkrip && versiSkrip !== SCRIPT_VERSI && (
+            <p className="mt-3 rounded-xl bg-warn-soft px-3 py-2 text-[12px] leading-relaxed text-warn">
+              Skrip di spreadsheet masih <b>v{versiSkrip}</b>. Versi <b>v{SCRIPT_VERSI}</b> diperlukan agar minggu terbaru
+              terbaca tepat — pada versi lama, tab minggu baru bisa salah dianggap sudah ditutup. Salin ulang kode di menu
+              Sinkronisasi, lalu Terapkan → Kelola deployment → Edit → Versi baru.
+            </p>
           )}
 
           {pesan && (

@@ -1043,7 +1043,7 @@ export async function kirimKeScript(url: string, payload: Payload, batasMs = 250
 }
 
 /** Versi kode Apps Script yang disalin dari aplikasi (harus sama dengan `VERSI` di skrip). */
-export const SCRIPT_VERSI = "2.3";
+export const SCRIPT_VERSI = "2.4";
 
 export type BuatTabResult = {
   ok: boolean;
@@ -1295,43 +1295,106 @@ function tabMinggu(ss) {
 }
 
 /**
- * Urutan minggu dibaca dari JUDUL tab ("LAPORAN MINGGU II BULAN NOVEMBER 2026"), bukan dari
- * posisi tab — supaya urutan tab yang digeser orang tidak membalik siapa yang terbaru.
+ * Judul minggu dibaca dari baris judul di bagian atas tab. Kop surat memakai dua baris
+ * pertama, jadi baris "LAPORAN MINGGU KE- III BULAN NOVEMBER 2026" bisa ada di baris 3–6;
+ * karena itu 12 baris × 8 kolom dibaca (aman untuk template lama maupun baru).
  * null = judul tidak terbaca.
  */
 const BULAN_NAMA = ['januari', 'februari', 'maret', 'april', 'mei', 'juni', 'juli', 'agustus', 'september', 'oktober', 'november', 'desember'];
 const ROMAWI_ANGKA = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6 };
 
-function kunciMinggu(sh) {
-  let teks = '';
+/** Baris judul minggu pada sebuah tab ('' bila tidak ada). */
+function judulMinggu(sh) {
+  let baris = [];
   try {
-    // Judul "LAPORAN MINGGU …" biasanya di 3 baris pertama; kolom A–F cukup.
-    const v = sh.getRange(1, 1, 3, 6).getDisplayValues();
-    teks = v.map(function (r) { return r.join(' '); }).join(' ');
+    const v = sh.getRange(1, 1, 12, 8).getDisplayValues();
+    v.forEach(function (r) {
+      const s = rapi(r.join(' '));
+      if (s) baris.push(s);
+    });
   } catch (e) {
-    teks = '';
+    baris = [];
   }
-  const t = rapi(teks);
-  let bulan = -1;
-  for (let i = 0; i < BULAN_NAMA.length; i++) if (t.indexOf(BULAN_NAMA[i]) >= 0) { bulan = i; break; }
-  const th = t.match(/(20\\d{2}|19\\d{2})/);
-  const rom = t.match(/minggu\\s+([ivx]+)/);
+  if (!baris.length) return '';
+  let i;
+  for (i = 0; i < baris.length; i++) {
+    if (baris[i].indexOf('laporan') >= 0 && baris[i].indexOf('minggu') >= 0) {
+      return (baris[i] + ' ' + (baris[i + 1] || '')).trim();
+    }
+  }
+  for (i = 0; i < baris.length; i++) {
+    if (baris[i].indexOf('minggu') >= 0 && baris[i].indexOf('bulan') >= 0) {
+      return (baris[i] + ' ' + (baris[i + 1] || '')).trim();
+    }
+  }
+  return baris.join(' ');
+}
+
+function kunciMinggu(sh) {
+  const t = judulMinggu(sh);
+  if (!t) return null;
+  // Bulan diambil dari pasangan "november 2026" (bukan sekadar kata pertama yang cocok).
+  let bulan = -1, tahun = 0;
+  for (let i = 0; i < BULAN_NAMA.length; i++) {
+    const m = t.match(new RegExp(BULAN_NAMA[i] + '[^0-9]{0,12}(20\\d{2}|19\\d{2})'));
+    if (m) { bulan = i; tahun = Number(m[1]); break; }
+  }
+  if (bulan < 0) {
+    for (let i = 0; i < BULAN_NAMA.length; i++) if (t.indexOf(BULAN_NAMA[i]) >= 0) { bulan = i; break; }
+  }
+  if (!tahun) {
+    const th = t.match(/(20\\d{2}|19\\d{2})/);
+    tahun = th ? Number(th[1]) : 0;
+  }
+  // "minggu ke- iii", "minggu iii", "minggu ke iii"
+  const rom = t.match(/minggu\\s*(?:ke[\\s-]*)?([ivx]+)/);
   const minggu = rom ? ROMAWI_ANGKA[rom[1]] || 0 : 0;
-  const tahun = th ? Number(th[1]) : 0;
   if (bulan < 0 && !tahun && !minggu) return null;
   return tahun * 10000 + Math.max(bulan, 0) * 100 + minggu;
 }
 
-/** Minggu terbaru: judul dengan bulan/minggu paling akhir. Bila semua judul tak terbaca, pakai urutan tab. */
+/** Cadangan bila judul tab tak terbaca: baca bulan & minggu dari NAMA tab ("Nov III", "Agust IV"). */
+function kunciNama(nama) {
+  const t = rapi(nama);
+  let bulan = -1;
+  for (let i = 0; i < BULAN_NAMA.length; i++) {
+    if (t.indexOf(BULAN_NAMA[i].slice(0, 3)) >= 0) { bulan = i; break; }
+  }
+  if (bulan < 0 && t.indexOf('agt') >= 0) bulan = 7;
+  if (bulan < 0 && t.indexOf('peb') >= 0) bulan = 1;
+  const kata = t.split(' ');
+  const rom = kata.filter(function (w) { return /^[ivx]+$/.test(w); });
+  const minggu = rom.length ? ROMAWI_ANGKA[rom[rom.length - 1]] || 0 : 0;
+  if (bulan < 0 && !minggu) return null;
+  return Math.max(bulan, 0) * 100 + minggu;
+}
+
+/**
+ * Minggu terbaru = judul dengan bulan/minggu paling akhir. Bila judul sebuah tab tak terbaca,
+ * nama tab dipakai sebagai cadangan. Bila tetap tak ada yang terbaca, tab PALING KIRI dipakai
+ * (tab minggu baru selalu diletakkan di kiri), bukan tab paling kanan.
+ */
 function gidTerbaru(ss) {
   const d = tabMinggu(ss);
   if (!d.length) return '';
-  let pilih = null, kunci = -1;
+  const kunci = [];
+  let tahunAcuan = 0;
   for (let i = 0; i < d.length; i++) {
     const k = kunciMinggu(d[i]);
-    if (k !== null && k > kunci) { kunci = k; pilih = d[i]; }
+    kunci.push(k);
+    if (k !== null && Math.floor(k / 10000) > tahunAcuan) tahunAcuan = Math.floor(k / 10000);
   }
-  return String((pilih || d[d.length - 1]).getSheetId());
+  let pilih = null, terbaik = -1;
+  for (let i = 0; i < d.length; i++) {
+    let k = kunci[i];
+    if (k === null) {
+      const n = kunciNama(d[i].getName());
+      if (n === null) continue;
+      k = tahunAcuan * 10000 + n;
+    }
+    if (k > terbaik) { terbaik = k; pilih = d[i]; }
+  }
+  return String((pilih || d[0]).getSheetId());
 }
 
 function mingguDibuka() {

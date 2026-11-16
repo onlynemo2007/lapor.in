@@ -613,8 +613,8 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
                 <div className="mt-3 flex flex-wrap items-start gap-2.5 rounded-xl bg-warn-soft p-3 text-[12px] leading-relaxed text-warn">
                   <I.alert className="mt-0.5 h-4 w-4 shrink-0" />
                   <span className="min-w-[200px] flex-1">
-                    Skrip di spreadsheet masih v{versiSkrip}. Fitur <b>tab baru</b> dan <b>tambah baris</b> di tabel keuangan
-                    butuh v{SCRIPT_VERSI} — salin ulang kode di bagian Koneksi, lalu{" "}
+                    Skrip di spreadsheet masih v{versiSkrip}. Fitur <b>tab baru</b>, <b>tambah baris</b> di tabel keuangan, dan{" "}
+                    <b>penentuan minggu terbaru</b> (kunci minggu) butuh v{SCRIPT_VERSI} — salin ulang kode di bagian Koneksi, lalu{" "}
                     <b>Terapkan → Kelola deployment → Edit → Versi baru</b>.
                   </span>
                   <Btn

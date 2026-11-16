@@ -26,7 +26,7 @@ const CSV = [
 ].join("\n");
 
 let aktif: ReturnType<typeof useApp> | null = null;
-let ping = { ok: true, versi: "2.3", terbaru: BARU, dibuka: [] as string[], adaPin: true, tabs: TABS };
+let ping = { ok: true, versi: "2.4", terbaru: BARU, dibuka: [] as string[], adaPin: true, tabs: TABS };
 const kiriman: Record<string, unknown>[] = [];
 
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -104,7 +104,7 @@ async function buka(pengaturan: Record<string, unknown> = {}) {
 
 async function main() {
   /* 1) dibuka dengan tab minggu lama → otomatis pindah ke minggu terbaru */
-  ping = { ok: true, versi: "2.3", terbaru: BARU, dibuka: [], adaPin: true, tabs: TABS };
+  ping = { ok: true, versi: "2.4", terbaru: BARU, dibuka: [], adaPin: true, tabs: TABS };
   await buka();
   cek("minggu terbaru terbaca dari skrip", aktif!.mingguTerbaru === BARU, aktif!.mingguTerbaru);
   cek("tab lama dipindah otomatis ke minggu terbaru", aktif!.settings.activeGid === BARU, aktif!.settings.activeGid);
@@ -121,14 +121,14 @@ async function main() {
   cek("pilihan minggu lama tanpa admin ditolak", aktif!.settings.activeGid === BARU, aktif!.settings.activeGid);
 
   /* 3) skrip membuka minggu lama untuk koreksi → semua pengisi boleh */
-  ping = { ok: true, versi: "2.3", terbaru: BARU, dibuka: [LAMA], adaPin: true, tabs: TABS };
+  ping = { ok: true, versi: "2.4", terbaru: BARU, dibuka: [LAMA], adaPin: true, tabs: TABS };
   await buka({ activeGid: LAMA });
   cek("minggu yang dibuka skrip tidak terkunci", aktif!.terkunciGid(LAMA) === false);
   cek("minggu yang dibuka skrip boleh dipakai", aktif!.bolehBukaMinggu(LAMA) === true);
   cek("tab minggu lama tetap aktif", aktif!.settings.activeGid === LAMA, aktif!.settings.activeGid);
 
   /* 4) PIN admin benar → minggu lama boleh dibuka di perangkat ini */
-  ping = { ok: true, versi: "2.3", terbaru: BARU, dibuka: [], adaPin: true, tabs: TABS };
+  ping = { ok: true, versi: "2.4", terbaru: BARU, dibuka: [], adaPin: true, tabs: TABS };
   await buka();
   const pinSalah = await aktif!.masukAdmin("9999");
   cek("PIN salah ditolak", pinSalah.ok === false && aktif!.admin === false, JSON.stringify(pinSalah));
@@ -153,7 +153,8 @@ async function main() {
   cek("tab dikembalikan ke minggu terbaru", aktif!.settings.activeGid === BARU, aktif!.settings.activeGid);
   cek("isian lama tidak dikirim saat terkunci", kiriman.length === 0, JSON.stringify(kiriman));
 
-  /* 6) tampilan: pemilih minggu mengunci tab lama & menu “Kunci minggu” bisa dibuka */
+  /* 6) tampilan: pemilih minggu mengunci tab lama & menu “Kunci minggu” bisa dibuka.
+     Versi skrip sengaja dimundurkan untuk memastikan saran pembaruan tampil. */
   ping = { ok: true, versi: "2.3", terbaru: BARU, dibuka: [], adaPin: true, tabs: TABS };
   await buka();
   if (root) {
@@ -213,6 +214,7 @@ async function main() {
     cek("panel kunci minggu terbuka", t.includes("Minggu terbaru (Nov III) selalu bisa diisi"));
     cek("panel menandai minggu lama baca-saja", /Terkunci · baca-saja/.test(t));
     cek("panel menyediakan PIN admin", t.includes("PIN admin") && t.includes("Buka mode admin"));
+    cek("panel menyarankan perbarui skrip v2.4", t.includes("v2.4 diperlukan agar minggu terbaru terbaca tepat"), "");
   }
 
   const lulus = hasil.filter((h) => h.lulus).length;

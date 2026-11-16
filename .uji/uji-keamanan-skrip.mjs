@@ -185,6 +185,80 @@ const KOL_BUR = 4;
   cek("tab lama tetap terkunci walau di kanan", tulisLama.ok === false && tulisLama.terkunci === true, JSON.stringify(tulisLama));
 }
 
+/* -------- 4c. judul minggu di bawah kop surat (seperti sheet asli) ------- */
+/** Tab dengan kop 2 baris + judul minggu di baris 5 ("LAPORAN MINGGU KE- III BULAN NOVEMBER 2026"). */
+function tabKop(judul, tanpaJudul = false) {
+  const g = [];
+  const isi = (row, col, val) => {
+    while (g.length < row) g.push([]);
+    const r = g[row - 1];
+    while (r.length < col) r.push("");
+    r[col - 1] = val;
+  };
+  isi(1, 2, "KEMENTERIAN KELAUTAN DAN PERIKANAN");
+  isi(2, 2, "PUSAT STANDARDISASI DAN SERTIFIKASI SUMBER DAYA MANUSIA KELAUTAN DAN PERIKANAN");
+  if (!tanpaJudul) {
+    isi(5, 2, judul);
+    isi(6, 2, "TIM DUKMAN");
+  }
+  isi(8, 2, "A");
+  isi(8, 3, "Kegiatan");
+  isi(10, 2, "No");
+  isi(10, 3, "Tim");
+  isi(10, 5, "Tanggal");
+  return g;
+}
+
+{
+  const env = lingkunganDari(tabKop("LAPORAN MINGGU II BULAN NOVEMBER 2026"), "Nov II");
+  const lamaId = Number(GID);
+  const baru = new Sheet(env.ss, "Nov III", tabKop("LAPORAN MINGGU KE- III BULAN NOVEMBER 2026"));
+  baru.id = 616161;
+  env.ss.sheets.unshift(baru); // Nov III di kiri (paling baru)
+  const a = api(env);
+  const info = get(a, {});
+  cek(
+    "judul di baris 5 terbaca (Nov III terbaru, bukan tab paling kanan)",
+    info.terbaru === String(baru.getSheetId()),
+    JSON.stringify({ terbaru: info.terbaru, baru: baru.getSheetId(), lama: lamaId }),
+  );
+  const tulisBaru = post(a, {
+    token: a.TOKEN,
+    oleh: "Rani",
+    gid: String(baru.getSheetId()),
+    kegiatan: [{ tim: "keuangan", sub: "", tanggal: "16 november 2026", uraian: "kegiatan minggu baru" }],
+  });
+  cek("minggu terbaru di baris 5 boleh diisi", tulisBaru.ok !== false, JSON.stringify(tulisBaru).slice(0, 200));
+}
+
+/* ---- 4d. judul tak terbaca sama sekali: nama tab jadi penentu terbaru ---- */
+{
+  const env = lingkunganDari(tabKop("", true), "April II");
+  const aprId = Number(GID);
+  const nov = new Sheet(env.ss, "Nov III", tabKop("", true));
+  nov.id = 717171;
+  env.ss.sheets.push(nov); // sengaja di KANAN
+  const a = api(env);
+  const info = get(a, {});
+  cek(
+    "tanpa judul, nama tab menentukan minggu terbaru",
+    info.terbaru === String(nov.getSheetId()),
+    JSON.stringify({ terbaru: info.terbaru, nov: nov.getSheetId(), apr: aprId }),
+  );
+}
+
+/* ---- 4e. judul & nama tak terbaca: tab paling kiri dianggap terbaru ------ */
+{
+  const env = lingkunganDari(tabKop("", true), "Sheet1");
+  const kiriId = Number(GID);
+  const kanan = new Sheet(env.ss, "Sheet2", tabKop("", true));
+  kanan.id = 818181;
+  env.ss.sheets.push(kanan);
+  const a = api(env);
+  const info = get(a, {});
+  cek("tanpa petunjuk apa pun, tab paling kiri dipakai", info.terbaru === String(kiriId), JSON.stringify({ terbaru: info.terbaru, kiri: kiriId }));
+}
+
 /* --------------------------- 5. anti-timpa ------------------------------ */
 {
   const env = lingkunganDari(isiTab());

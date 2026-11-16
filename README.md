@@ -121,8 +121,18 @@ Baris rekap di tabel Realisasi Anggaran (mis. `032.12.DL`, `7948`, `2378`, `2378
   benar-benar diubah pengguna — baris lain tetap dilindungi (angka 0 tidak menimpa isian lama);
 - pergantian rumus dilaporkan terpisah (`diganti`) dari kegagalan, jadi tidak dikira gagal kirim.
 
-Skrip **v2.3** wajib dipasang agar `paksa` dihormati; pada v2.2 baris rekap tetap dilaporkan
+Skrip **v2.3+** wajib dipasang agar `paksa` dihormati; pada v2.2 baris rekap tetap dilaporkan
 "tidak ditimpa".
+
+## Penentuan minggu terbaru (Apps Script v2.4)
+
+Tab minggu baru selalu jadi tab yang **bisa diisi**; minggu sebelumnya (mis. Nov II dan ke belakang)
+otomatis terkunci. Skrip **v2.4** membaca judul minggu dari **12 baris teratas** tab, mengenali tulisan
+`LAPORAN MINGGU KE- III BULAN NOVEMBER 2026` (termasuk bentuk `KE-`), lalu memakai **nama tab** sebagai
+cadangan bila judul tidak terbaca. Versi lama hanya membaca 3 baris pertama, sehingga pada kop surat dua
+baris judul minggu tidak terbaca dan minggu baru bisa salah dianggap sudah ditutup — gejalanya: peringatan
+"minggu sudah lewat" saat mengisi laporan, dan kiriman ditolak skrip. Perbarui skrip ke v2.4 lewat menu
+**Sinkronisasi → Salin kode → Terapkan → Kelola deployment → Edit → Versi baru**.
 
 ## Halaman pilih saat alamat utama dibuka
 
@@ -191,7 +201,7 @@ jadi tidak bisa dilewati dari tampilan:
 
 | Aturan | Perilaku |
 |---|---|
-| **Minggu lama terkunci** | Hanya tab minggu **terbaru** yang bisa ditulisi. Urutan ditentukan dari **judul** tab (`LAPORAN MINGGU II BULAN NOVEMBER 2026`), bukan posisi tab. Saat dashboard atau menu Isi Laporan dibuka, aplikasi **otomatis memindahkan tab ke minggu terbaru** dan mengunci pilihan minggu lama (baca-saja). Minggu lama hanya bisa dipilih/diedit setelah **admin memasukkan PIN** (tombol **Kunci minggu** di kanan atas, atau Sinkronisasi → Mode admin) atau setelah kuncinya dibuka di skrip. |
+| **Minggu lama terkunci** | Hanya tab minggu **terbaru** yang bisa ditulisi. Urutan ditentukan dari **judul** tab (`LAPORAN MINGGU KE- III BULAN NOVEMBER 2026`) yang dibaca dari 12 baris teratas — kop surat memakai dua baris pertama, jadi judul biasanya di baris 5 — bukan dari posisi tab. Bila judul tak terbaca, **nama tab** (`Nov III`, `Agust IV`) dipakai sebagai cadangan, dan tab paling kiri jadi pilihan terakhir. Saat dashboard atau menu Isi Laporan dibuka, aplikasi **otomatis memindahkan tab ke minggu terbaru** dan mengunci pilihan minggu lama (baca-saja). Minggu lama hanya bisa dipilih/diedit setelah **admin memasukkan PIN** (tombol **Kunci minggu** di kanan atas, atau Sinkronisasi → Mode admin) atau setelah kuncinya dibuka di skrip. |
 | **Nama pengisi wajib** | Kiriman tanpa nama (≥ 2 huruf) ditolak; nama masuk ke tab `_audit`. |
 | **Aksi berisiko = admin** | `buatTab`, buka/kunci minggu, dan "kirim ulang seluruh isian" butuh **PIN admin** yang disetel di Script Properties (`PIN_ADMIN`), bukan di kode. |
 | **Batas kiriman** | Maksimal 400 sel per kiriman, 60 kiriman / 5 menit, 5 baris baru per kiriman. |
