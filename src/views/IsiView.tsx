@@ -32,7 +32,7 @@ import { StateGate } from "./common";
 type Mode = "form" | "chat" | "rencana";
 
 export default function IsiView({ params }: { params: URLSearchParams }) {
-  const { week, reload, dibacaAt, terkunciAktif, terkunciGid, mingguTerbaru, tabs, admin } = useApp();
+  const { week, reload, dibacaAt, bacaSaja, terkunciGid, mingguTerbaru, tabs } = useApp();
   const mode = (["form", "chat", "rencana"].includes(params.get("mode") ?? "") ? params.get("mode") : "form") as Mode;
 
   if (!week) return <StateGate />;
@@ -84,12 +84,14 @@ export default function IsiView({ params }: { params: URLSearchParams }) {
           </span>
         </p>
       )}
-      {terkunciAktif && (
-        <p className="no-print flex items-start gap-2 rounded-xl bg-paper px-3 py-2 text-[12px] leading-relaxed text-muted">
-          <I.lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      {bacaSaja && (
+        <p className="no-print flex items-start gap-2 rounded-xl border border-warn/30 bg-warn-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-warn">
+          <I.lock className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            Minggu ini terkunci (baca-saja), jadi isian tidak dikirim ke sheet.{" "}
-            {admin ? "Buka kuncinya di menu Kunci minggu (kanan atas)." : "Minta admin membukanya lebih dulu."}
+            Minggu <b>“{week.tab || tabs.find((t) => t.gid === week.gid)?.name}”</b> sudah ditutup: isinya hanya bisa{" "}
+            <b>dilihat</b>, tidak bisa diubah. Untuk mengedit, minta admin membuka kuncinya lewat menu{" "}
+            <b>Kunci minggu</b> (kanan atas). Minggu terbaru:{" "}
+            <b>“{tabs.find((t) => t.gid === mingguTerbaru)?.name ?? "—"}”</b>.
           </span>
         </p>
       )}
@@ -104,7 +106,7 @@ export default function IsiView({ params }: { params: URLSearchParams }) {
 /* ------------------------------- form kegiatan ------------------------------- */
 
 function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParams }) {
-  const { settings, updateWeek, syncState, admin } = useApp();
+  const { settings, updateWeek, syncState, admin, bacaSaja } = useApp();
   const toast = useToast();
   const siapSinkron = !!settings.scriptUrl && !!settings.token && settings.autoSync;
 
@@ -185,6 +187,10 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
   };
 
   const simpan = (diam = false) => {
+    if (bacaSaja) {
+      if (!diam) toast(`Minggu “${week.tab}” hanya bisa dilihat — minta admin membuka kuncinya`, "err");
+      return;
+    }
     const bersih = items.map(rapikan).filter(Boolean);
     const k = loadedKey.current;
     const [tim, sub, tgl] = k.split("|");
@@ -204,7 +210,7 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
   };
 
   const pindah = (next: { tim: string; sub: string; d: string }) => {
-    if (berubah) simpan(true);
+    if (!bacaSaja && berubah) simpan(true);
     setSlot(next);
   };
 
@@ -334,7 +340,7 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
                       : "belum tersinkron"}
               </Pill>
             )}
-            {items.length > 0 && (
+            {!bacaSaja && items.length > 0 && (
               <Btn variant="soft" size="sm" onClick={() => setItems(items.map(rapikan))} title="Rapikan ejaan & kapitalisasi">
                 <I.wand className="h-3.5 w-3.5" /> Rapikan
               </Btn>
@@ -354,7 +360,8 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
             items={items}
             onChange={setItems}
             onSubmit={simpanLanjut}
-            autoFocus
+            autoFocus={!bacaSaja}
+            bacaSaja={bacaSaja}
             placeholder={items.length ? "Tambah butir lain…" : "Apa yang dikerjakan hari ini? cth: bikin flyer kuis serasi buat medsos"}
           />
         </div>
@@ -383,17 +390,19 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
                 >
                   {u}
                 </a>
-                <button
-                  onClick={() => {
-                    setUrlsTgl(urlsTgl.filter((x) => x !== u));
-                    toast(`Tautan ${tanggalPendek(slot.d)} dihapus dari daftar — simpan untuk menerapkan`, "info");
-                  }}
-                  className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted transition hover:bg-bad-soft hover:text-bad"
-                  title="Hapus tautan ini"
-                  aria-label={`Hapus tautan ${i + 1}`}
-                >
-                  <I.trash className="h-3.5 w-3.5" />
-                </button>
+                {!bacaSaja && (
+                  <button
+                    onClick={() => {
+                      setUrlsTgl(urlsTgl.filter((x) => x !== u));
+                      toast(`Tautan ${tanggalPendek(slot.d)} dihapus dari daftar — simpan untuk menerapkan`, "info");
+                    }}
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted transition hover:bg-bad-soft hover:text-bad"
+                    title="Hapus tautan ini"
+                    aria-label={`Hapus tautan ${i + 1}`}
+                  >
+                    <I.trash className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -416,17 +425,19 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
                   >
                     {u}
                   </a>
-                  <Btn
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      if (urlsTgl.some((x) => x.toLowerCase() === u.toLowerCase())) return;
-                      setUrlsTgl([...urlsTgl, u]);
-                      toast(`Tautan dipakai untuk ${tanggalPendek(slot.d)} — simpan untuk menerapkan`);
-                    }}
-                  >
-                    Pakai tanggal ini
-                  </Btn>
+                  {!bacaSaja && (
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        if (urlsTgl.some((x) => x.toLowerCase() === u.toLowerCase())) return;
+                        setUrlsTgl([...urlsTgl, u]);
+                        toast(`Tautan dipakai untuk ${tanggalPendek(slot.d)} — simpan untuk menerapkan`);
+                      }}
+                    >
+                      Pakai tanggal ini
+                    </Btn>
+                  )}
                 </li>
               ))}
             </ul>
@@ -444,6 +455,7 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
           </p>
         )}
 
+        {!bacaSaja && (
         <div className="mt-2 flex items-center gap-2 rounded-xl border border-line bg-white px-3 transition focus-within:border-brand">
           <I.link className="h-4 w-4 shrink-0 text-muted" />
           <input
@@ -475,6 +487,7 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
             <I.plus className="h-3.5 w-3.5" /> Tambah
           </Btn>
         </div>
+        )}
         <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">
           Tautan di sini ditulis ke <b>baris {tanggalPendek(slot.d)}</b> (kolom{" "}
           {hurufKolom(week.cols.lamp)}) sebagai <span className="font-mono">{slot.d}: https://…</span>. Tautan tanggal
@@ -489,7 +502,9 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
 
         <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-5">
           <span className="mr-auto text-[12px] text-muted">
-            {berubah
+            {bacaSaja
+              ? "Minggu ini hanya bisa dilihat — tidak ada yang bisa diubah"
+              : berubah
               ? "Ada perubahan belum disimpan"
               : siapSinkron
                 ? syncState.status === "error"
@@ -499,18 +514,18 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
                     : "Tersimpan dan otomatis masuk Google Sheet"
                 : "Tersimpan di perangkat"}
           </span>
-          {nextDate && (
+          {!bacaSaja && nextDate && (
             <Btn variant="ghost" onClick={() => simpan()} disabled={!berubah}>
               <I.check className="h-4 w-4" /> Simpan
             </Btn>
           )}
-          {nextDate && (
+          {!bacaSaja && nextDate && (
             <Btn variant="brand" onClick={simpanLanjut}>
               Simpan & lanjut {hariDari(nextDate)}
               <I.arrow className="h-4 w-4" />
             </Btn>
           )}
-          {!nextDate && (
+          {!bacaSaja && !nextDate && (
             <Btn variant="brand" onClick={() => { if (berubah) simpan(); }} disabled={!berubah}>
               <I.check className="h-4 w-4" /> Simpan
             </Btn>
@@ -595,7 +610,7 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
 /* ------------------------------- form rencana ------------------------------- */
 
 function FormRencana({ week }: { week: WeekData }) {
-  const { settings, updateWeek, admin } = useApp();
+  const { settings, updateWeek, admin, bacaSaja } = useApp();
   const toast = useToast();
   /** Pegawai biasa hanya mengisi rencana timnya sendiri; admin boleh semua tim. */
   const timSendiri = timTerkunci(settings.timUtama, admin);
@@ -610,6 +625,10 @@ function FormRencana({ week }: { week: WeekData }) {
   const itemsOf = (id: string) => draft[id] ?? week.rencana[id] ?? [];
 
   const simpan = (id: string) => {
+    if (bacaSaja) {
+      toast(`Minggu “${week.tab}” hanya bisa dilihat — minta admin membuka kuncinya`, "err");
+      return;
+    }
     const bersih = itemsOf(id).map(rapikan).filter(Boolean);
     updateWeek((w) => setRencana(w, id, bersih, settings.nama));
     setDraft((d) => {
@@ -626,6 +645,15 @@ function FormRencana({ week }: { week: WeekData }) {
   return (
     <div className="space-y-3">
       <p className="text-[13.5px] text-muted">{week.judulRencana || "Rencana kegiatan minggu berikutnya"} — satu sel per tim di kolom D.</p>
+      {bacaSaja && (
+        <p className="flex items-start gap-2 rounded-xl border border-warn/30 bg-warn-soft px-3 py-2 text-[12.5px] leading-relaxed text-warn">
+          <I.lock className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Minggu <b>“{week.tab}”</b> hanya bisa dilihat. Rencana tidak bisa diubah — minta admin membuka kuncinya
+            lewat menu <b>Kunci minggu</b>.
+          </span>
+        </p>
+      )}
       {timSendiri && (
         <p className="flex items-start gap-2 rounded-xl bg-paper px-3 py-2 text-[12px] leading-relaxed text-muted">
           <I.lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -679,14 +707,17 @@ function FormRencana({ week }: { week: WeekData }) {
                   items={items}
                   onChange={(v) => setDraft((d) => ({ ...d, [t.id]: v }))}
                   onSubmit={() => simpan(t.id)}
-                  autoFocus
+                  autoFocus={!bacaSaja}
+                  bacaSaja={bacaSaja}
                   placeholder="Rencana kegiatan minggu depan…"
                 />
-                <div className="mt-4 flex justify-end">
-                  <Btn variant="brand" onClick={() => simpan(t.id)} disabled={!changed}>
-                    <I.check className="h-4 w-4" /> Simpan rencana
-                  </Btn>
-                </div>
+                {!bacaSaja && (
+                  <div className="mt-4 flex justify-end">
+                    <Btn variant="brand" onClick={() => simpan(t.id)} disabled={!changed}>
+                      <I.check className="h-4 w-4" /> Simpan rencana
+                    </Btn>
+                  </div>
+                )}
               </div>
             )}
           </Card>

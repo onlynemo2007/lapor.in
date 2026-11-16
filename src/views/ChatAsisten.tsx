@@ -37,7 +37,7 @@ function cariTim(text: string): Tim | undefined {
 }
 
 export default function ChatAsisten() {
-  const { week, settings, updateWeek, admin } = useApp();
+  const { week, settings, updateWeek, admin, bacaSaja } = useApp();
   /** Pegawai biasa hanya mengisi timnya sendiri (tim utama di Profil); admin boleh semua tim. */
   const timSendiri = timTerkunci(settings.timUtama, admin);
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -104,14 +104,34 @@ export default function ChatAsisten() {
   };
 
   useEffect(() => {
-    if (week && !started.current) {
+    if (week && !started.current && !bacaSaja) {
       started.current = true;
       mulai();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [week]);
+  }, [week, bacaSaja]);
 
   if (!week) return null;
+
+  /**
+   * Minggu lama bersifat baca-saja: asisten tidak dijalankan sama sekali supaya
+   * tidak ada isian yang bisa tersimpan ke tab yang sudah ditutup.
+   */
+  if (bacaSaja) {
+    return (
+      <div className="mx-auto max-w-3xl rounded-2xl border border-line bg-white p-6 text-center">
+        <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-warn-soft text-warn">
+          <I.lock className="h-6 w-6" />
+        </span>
+        <p className="mt-3 text-[15px] font-bold">Minggu “{week.tab}” hanya bisa dilihat</p>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
+          Asisten chat menulis isian langsung ke sheet, jadi tidak aktif untuk minggu yang sudah ditutup. Minta admin
+          membuka kuncinya lewat menu <b>Kunci minggu</b> di kanan atas untuk mengedit, atau pilih minggu terbaru di
+          daftar tab.
+        </p>
+      </div>
+    );
+  }
 
   const pilihTim = (t: Tim) => {
     user(t.label);
@@ -272,6 +292,10 @@ export default function ChatAsisten() {
   };
 
   const simpan = () => {
+    if (bacaSaja) {
+      bot([<>Minggu ini hanya bisa dilihat — isian tidak dikirim ke sheet.</>], "selesai");
+      return;
+    }
     user("Simpan");
     const c = ctx.current;
     const k = slotKey(c.tim, c.sub, c.d);

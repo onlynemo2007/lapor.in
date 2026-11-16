@@ -36824,6 +36824,7 @@ function AppProvider({ children }) {
   dataRef.current = data;
   const putusRef = (0, import_react2.useRef)(bacaKoneksi()?.putus === true);
   const penuhRef = (0, import_react2.useRef)(null);
+  const kunciRef = (0, import_react2.useRef)({ terbaru: "", dibuka: [], admin: false });
   const sending = (0, import_react2.useRef)(false);
   const again = (0, import_react2.useRef)(false);
   const percobaan = (0, import_react2.useRef)(0);
@@ -36931,6 +36932,11 @@ function AppProvider({ children }) {
         for (let putaran = 0; putaran < 20; putaran++) {
           const w = Object.values(dataRef.current.weeks).find((x) => !sudah.has(x.gid) && Object.keys(x.dirty ?? {}).length);
           if (!w) break;
+          const kunci = kunciRef.current;
+          if (kunci.terbaru && w.gid !== kunci.terbaru && !kunci.admin && !kunci.dibuka.includes(w.gid)) {
+            sudah.add(w.gid);
+            continue;
+          }
           const k = siapkanKiriman(w, st.token, st.nama);
           sudah.add(w.gid);
           if (!k) continue;
@@ -37328,14 +37334,19 @@ function AppProvider({ children }) {
     },
     [mingguTerbaru, skripInfo]
   );
-  const bolehBukaMinggu = (0, import_react2.useCallback)(
-    (gid) => !terkunciGid(gid) || admin,
-    [terkunciGid, admin]
+  const bolehBukaMinggu = (0, import_react2.useCallback)((gid) => !!gid, []);
+  const bolehEditMinggu = (0, import_react2.useCallback)((gid) => !terkunciGid(gid) || admin, [terkunciGid, admin]);
+  kunciRef.current = { terbaru: mingguTerbaru, dibuka: skripInfo?.dibuka ?? [], admin };
+  const bacaSaja = (0, import_react2.useMemo)(
+    () => !admin && !!data.settings.activeGid && terkunciGid(data.settings.activeGid),
+    [admin, data.settings.activeGid, terkunciGid]
   );
+  const fokusAwal = (0, import_react2.useRef)(false);
   (0, import_react2.useEffect)(() => {
+    if (!mingguTerbaru || fokusAwal.current) return;
+    fokusAwal.current = true;
     const gid = data.settings.activeGid;
-    if (!mingguTerbaru || gid === mingguTerbaru || admin) return;
-    if (!terkunciGid(gid)) return;
+    if (gid === mingguTerbaru || admin || !terkunciGid(gid)) return;
     setSettings({ activeGid: mingguTerbaru });
   }, [mingguTerbaru, admin, data.settings.activeGid, terkunciGid, setSettings]);
   const week = data.weeks[data.settings.activeGid] ?? null;
@@ -37369,10 +37380,12 @@ function AppProvider({ children }) {
     periksaSkrip,
     skripInfo,
     terkunciAktif,
+    bacaSaja,
     admin,
     mingguTerbaru,
     terkunciGid,
     bolehBukaMinggu,
+    bolehEditMinggu,
     aturKunciMinggu,
     masukAdmin,
     keluarAdmin,
@@ -37452,7 +37465,8 @@ function ItemsEditor({
   onChange,
   placeholder = "Tulis kegiatan, tekan Enter\u2026",
   onSubmit,
-  autoFocus
+  autoFocus,
+  bacaSaja = false
 }) {
   const [draft, setDraft] = (0, import_react5.useState)("");
   const addRef = (0, import_react5.useRef)(null);
@@ -37472,6 +37486,22 @@ function ItemsEditor({
     [n[i], n[j]] = [n[j], n[i]];
     onChange(n);
   };
+  if (bacaSaja) {
+    return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "space-y-2", "data-baca-saja": true, children: [
+      items.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("p", { className: "rounded-xl border border-dashed border-[#d6d5cf] px-3 py-3 text-[13px] text-[#a9a8a2]", children: "(belum ada isian)" }),
+      items.map((it, i) => /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "flex items-start gap-2 rounded-xl border border-line bg-paper px-3 py-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { className: "mt-0.5 w-5 shrink-0 text-right font-mono text-[12px] font-bold text-muted", children: [
+          i + 1,
+          "."
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("p", { className: "min-w-0 flex-1 whitespace-pre-wrap text-[14px] leading-relaxed", children: it })
+      ] }, i)),
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("p", { className: "pl-1 text-[11.5px] text-muted", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(I.lock, { className: "mr-1 inline h-3 w-3 align-[-2px]" }),
+        "Minggu ini hanya bisa dilihat. Minta admin membuka kuncinya untuk mengedit."
+      ] })
+    ] });
+  }
   return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "space-y-2", children: [
     items.map((it, i) => /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "anim-pop group flex items-start gap-2 rounded-xl border border-line bg-white p-1.5 pl-3 transition focus-within:border-brand", children: [
       /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { className: "mt-2 w-5 shrink-0 text-right font-mono text-[12px] font-bold text-muted", children: [
@@ -37567,7 +37597,7 @@ function cariTim(text) {
   return TIMS.find((x) => t.includes(x.id) || t.includes(norm(x.label)) || x.id === "program" && t.includes("monev"));
 }
 function ChatAsisten() {
-  const { week, settings, updateWeek, admin } = useApp();
+  const { week, settings, updateWeek, admin, bacaSaja } = useApp();
   const timSendiri = timTerkunci(settings.timUtama, admin);
   const [msgs, setMsgs] = (0, import_react6.useState)([]);
   const [step, setStep] = (0, import_react6.useState)("tim");
@@ -37641,12 +37671,27 @@ function ChatAsisten() {
     );
   };
   (0, import_react6.useEffect)(() => {
-    if (week && !started.current) {
+    if (week && !started.current && !bacaSaja) {
       started.current = true;
       mulai();
     }
-  }, [week]);
+  }, [week, bacaSaja]);
   if (!week) return null;
+  if (bacaSaja) {
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "mx-auto max-w-3xl rounded-2xl border border-line bg-white p-6 text-center", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-warn-soft text-warn", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(I.lock, { className: "h-6 w-6" }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "mt-3 text-[15px] font-bold", children: [
+        "Minggu \u201C",
+        week.tab,
+        "\u201D hanya bisa dilihat"
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("p", { className: "mt-1.5 text-[13px] leading-relaxed text-muted", children: [
+        "Asisten chat menulis isian langsung ke sheet, jadi tidak aktif untuk minggu yang sudah ditutup. Minta admin membuka kuncinya lewat menu ",
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("b", { children: "Kunci minggu" }),
+        " di kanan atas untuk mengedit, atau pilih minggu terbaru di daftar tab."
+      ] })
+    ] });
+  }
   const pilihTim = (t) => {
     user(t.label);
     ctx.current.tim = t.id;
@@ -37807,6 +37852,10 @@ function ChatAsisten() {
     );
   };
   const simpan = () => {
+    if (bacaSaja) {
+      bot([/* @__PURE__ */ (0, import_jsx_runtime7.jsx)(import_jsx_runtime7.Fragment, { children: "Minggu ini hanya bisa dilihat \u2014 isian tidak dikirim ke sheet." })], "selesai");
+      return;
+    }
     user("Simpan");
     const c2 = ctx.current;
     const k = slotKey(c2.tim, c2.sub, c2.d);
@@ -38108,7 +38157,7 @@ function StateGate() {
 // src/views/IsiView.tsx
 var import_jsx_runtime9 = __toESM(require_jsx_runtime(), 1);
 function IsiView({ params }) {
-  const { week, reload, dibacaAt, terkunciAktif, terkunciGid, mingguTerbaru, tabs, admin } = useApp();
+  const { week, reload, dibacaAt, bacaSaja, terkunciGid, mingguTerbaru, tabs } = useApp();
   const mode = ["form", "chat", "rencana"].includes(params.get("mode") ?? "") ? params.get("mode") : "form";
   if (!week) return /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(StateGate, {});
   return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "space-y-5", children: [
@@ -38163,12 +38212,29 @@ function IsiView({ params }) {
         "."
       ] })
     ] }),
-    terkunciAktif && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("p", { className: "no-print flex items-start gap-2 rounded-xl bg-paper px-3 py-2 text-[12px] leading-relaxed text-muted", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(I.lock, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
+    bacaSaja && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("p", { className: "no-print flex items-start gap-2 rounded-xl border border-warn/30 bg-warn-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-warn", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(I.lock, { className: "mt-0.5 h-4 w-4 shrink-0" }),
       /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("span", { children: [
-        "Minggu ini terkunci (baca-saja), jadi isian tidak dikirim ke sheet.",
+        "Minggu ",
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("b", { children: [
+          "\u201C",
+          week.tab || tabs.find((t) => t.gid === week.gid)?.name,
+          "\u201D"
+        ] }),
+        " sudah ditutup: isinya hanya bisa",
         " ",
-        admin ? "Buka kuncinya di menu Kunci minggu (kanan atas)." : "Minta admin membukanya lebih dulu."
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("b", { children: "dilihat" }),
+        ", tidak bisa diubah. Untuk mengedit, minta admin membuka kuncinya lewat menu",
+        " ",
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("b", { children: "Kunci minggu" }),
+        " (kanan atas). Minggu terbaru:",
+        " ",
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("b", { children: [
+          "\u201C",
+          tabs.find((t) => t.gid === mingguTerbaru)?.name ?? "\u2014",
+          "\u201D"
+        ] }),
+        "."
       ] })
     ] }),
     mode === "form" && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(FormKegiatan, { week, params }),
@@ -38177,7 +38243,7 @@ function IsiView({ params }) {
   ] });
 }
 function FormKegiatan({ week, params }) {
-  const { settings, updateWeek, syncState, admin } = useApp();
+  const { settings, updateWeek, syncState, admin, bacaSaja } = useApp();
   const toast = useToast();
   const siapSinkron = !!settings.scriptUrl && !!settings.token && settings.autoSync;
   const timSendiri = timTerkunci(settings.timUtama, admin);
@@ -38236,6 +38302,10 @@ function FormKegiatan({ week, params }) {
     else toast("Tautan itu sudah ada di daftar", "info");
   };
   const simpan = (diam = false) => {
+    if (bacaSaja) {
+      if (!diam) toast(`Minggu \u201C${week.tab}\u201D hanya bisa dilihat \u2014 minta admin membuka kuncinya`, "err");
+      return;
+    }
     const bersih = items.map(rapikan).filter(Boolean);
     const k = loadedKey.current;
     const [tim2, sub, tgl] = k.split("|");
@@ -38253,7 +38323,7 @@ function FormKegiatan({ week, params }) {
     else toast(`Perubahan tersimpan${lanjut}`, "info");
   };
   const pindah = (next) => {
-    if (berubah) simpan(true);
+    if (!bacaSaja && berubah) simpan(true);
     setSlot(next);
   };
   const tim = timById(slot.tim);
@@ -38359,7 +38429,7 @@ function FormKegiatan({ week, params }) {
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "flex items-center gap-2", children: [
           week.dirty[`A:${key}`] && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(Pill, { tone: syncState.status === "error" ? "bad" : "warn", children: syncState.status === "error" ? "gagal sinkron" : syncState.status === "sending" || syncState.status === "queued" ? "mengirim\u2026" : siapSinkron ? "menunggu sinkron" : "belum tersinkron" }),
-          items.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(Btn, { variant: "soft", size: "sm", onClick: () => setItems(items.map(rapikan)), title: "Rapikan ejaan & kapitalisasi", children: [
+          !bacaSaja && items.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(Btn, { variant: "soft", size: "sm", onClick: () => setItems(items.map(rapikan)), title: "Rapikan ejaan & kapitalisasi", children: [
             /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(I.wand, { className: "h-3.5 w-3.5" }),
             " Rapikan"
           ] })
@@ -38381,7 +38451,8 @@ function FormKegiatan({ week, params }) {
           items,
           onChange: setItems,
           onSubmit: simpanLanjut,
-          autoFocus: true,
+          autoFocus: !bacaSaja,
+          bacaSaja,
           placeholder: items.length ? "Tambah butir lain\u2026" : "Apa yang dikerjakan hari ini? cth: bikin flyer kuis serasi buat medsos"
         }
       ) }, flash),
@@ -38412,7 +38483,7 @@ function FormKegiatan({ week, params }) {
             children: u
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+        !bacaSaja && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
           "button",
           {
             onClick: () => {
@@ -38444,7 +38515,7 @@ function FormKegiatan({ week, params }) {
               children: u
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
+          !bacaSaja && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
             Btn,
             {
               variant: "ghost",
@@ -38473,7 +38544,7 @@ function FormKegiatan({ week, params }) {
         ] }),
         " (tanggal lain / belum bertanggal) \u2014 tetap utuh dan tidak tersentuh saat Anda menyimpan tanggal ini."
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "mt-2 flex items-center gap-2 rounded-xl border border-line bg-white px-3 transition focus-within:border-brand", children: [
+      !bacaSaja && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "mt-2 flex items-center gap-2 rounded-xl border border-line bg-white px-3 transition focus-within:border-brand", children: [
         /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(I.link, { className: "h-4 w-4 shrink-0 text-muted" }),
         /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
           "input",
@@ -38535,17 +38606,17 @@ function FormKegiatan({ week, params }) {
         " apa adanya \u2014 tautan yang disisipkan lewat \u201CSisipkan link\u201D berteks (mis. tulisan \u201CBukti 2 Nov\u201D yang bisa diklik) tidak terbaca aplikasi karena yang tersimpan hanya teksnya."
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-5", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "mr-auto text-[12px] text-muted", children: berubah ? "Ada perubahan belum disimpan" : siapSinkron ? syncState.status === "error" ? "Tersimpan di perangkat \xB7 gagal sinkron ke Sheet" : syncState.status === "sending" || syncState.status === "queued" ? "Tersimpan \xB7 sedang masuk ke Sheet\u2026" : "Tersimpan dan otomatis masuk Google Sheet" : "Tersimpan di perangkat" }),
-        nextDate && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(Btn, { variant: "ghost", onClick: () => simpan(), disabled: !berubah, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "mr-auto text-[12px] text-muted", children: bacaSaja ? "Minggu ini hanya bisa dilihat \u2014 tidak ada yang bisa diubah" : berubah ? "Ada perubahan belum disimpan" : siapSinkron ? syncState.status === "error" ? "Tersimpan di perangkat \xB7 gagal sinkron ke Sheet" : syncState.status === "sending" || syncState.status === "queued" ? "Tersimpan \xB7 sedang masuk ke Sheet\u2026" : "Tersimpan dan otomatis masuk Google Sheet" : "Tersimpan di perangkat" }),
+        !bacaSaja && nextDate && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(Btn, { variant: "ghost", onClick: () => simpan(), disabled: !berubah, children: [
           /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(I.check, { className: "h-4 w-4" }),
           " Simpan"
         ] }),
-        nextDate && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(Btn, { variant: "brand", onClick: simpanLanjut, children: [
+        !bacaSaja && nextDate && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(Btn, { variant: "brand", onClick: simpanLanjut, children: [
           "Simpan & lanjut ",
           hariDari(nextDate),
           /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(I.arrow, { className: "h-4 w-4" })
         ] }),
-        !nextDate && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(Btn, { variant: "brand", onClick: () => {
+        !bacaSaja && !nextDate && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(Btn, { variant: "brand", onClick: () => {
           if (berubah) simpan();
         }, disabled: !berubah, children: [
           /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(I.check, { className: "h-4 w-4" }),
@@ -38628,7 +38699,7 @@ function FormKegiatan({ week, params }) {
   ] });
 }
 function FormRencana({ week }) {
-  const { settings, updateWeek, admin } = useApp();
+  const { settings, updateWeek, admin, bacaSaja } = useApp();
   const toast = useToast();
   const timSendiri = timTerkunci(settings.timUtama, admin);
   const urut = (0, import_react7.useMemo)(() => {
@@ -38640,6 +38711,10 @@ function FormRencana({ week }) {
   const [draft, setDraft] = (0, import_react7.useState)({});
   const itemsOf = (id) => draft[id] ?? week.rencana[id] ?? [];
   const simpan = (id) => {
+    if (bacaSaja) {
+      toast(`Minggu \u201C${week.tab}\u201D hanya bisa dilihat \u2014 minta admin membuka kuncinya`, "err");
+      return;
+    }
     const bersih = itemsOf(id).map(rapikan).filter(Boolean);
     updateWeek((w) => setRencana(w, id, bersih, settings.nama));
     setDraft((d) => {
@@ -38656,6 +38731,20 @@ function FormRencana({ week }) {
     /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("p", { className: "text-[13.5px] text-muted", children: [
       week.judulRencana || "Rencana kegiatan minggu berikutnya",
       " \u2014 satu sel per tim di kolom D."
+    ] }),
+    bacaSaja && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("p", { className: "flex items-start gap-2 rounded-xl border border-warn/30 bg-warn-soft px-3 py-2 text-[12.5px] leading-relaxed text-warn", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(I.lock, { className: "mt-0.5 h-4 w-4 shrink-0" }),
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("span", { children: [
+        "Minggu ",
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("b", { children: [
+          "\u201C",
+          week.tab,
+          "\u201D"
+        ] }),
+        " hanya bisa dilihat. Rencana tidak bisa diubah \u2014 minta admin membuka kuncinya lewat menu ",
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("b", { children: "Kunci minggu" }),
+        "."
+      ] })
     ] }),
     timSendiri && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("p", { className: "flex items-start gap-2 rounded-xl bg-paper px-3 py-2 text-[12px] leading-relaxed text-muted", children: [
       /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(I.lock, { className: "mt-0.5 h-3.5 w-3.5 shrink-0" }),
@@ -38705,11 +38794,12 @@ function FormRencana({ week }) {
               items,
               onChange: (v) => setDraft((d) => ({ ...d, [t.id]: v })),
               onSubmit: () => simpan(t.id),
-              autoFocus: true,
+              autoFocus: !bacaSaja,
+              bacaSaja,
               placeholder: "Rencana kegiatan minggu depan\u2026"
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "mt-4 flex justify-end", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(Btn, { variant: "brand", onClick: () => simpan(t.id), disabled: !changed, children: [
+          !bacaSaja && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "mt-4 flex justify-end", children: /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(Btn, { variant: "brand", onClick: () => simpan(t.id), disabled: !changed, children: [
             /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(I.check, { className: "h-4 w-4" }),
             " Simpan rencana"
           ] }) })
@@ -38723,7 +38813,7 @@ function FormRencana({ week }) {
 var import_react8 = __toESM(require_react(), 1);
 var import_jsx_runtime10 = __toESM(require_jsx_runtime(), 1);
 function DashboardView() {
-  const { week, settings, setSettings, trend, loadTrend, trendLoading, tabs, pendingCount, syncState, reload, dibacaAt, admin } = useApp();
+  const { week, settings, setSettings, trend, loadTrend, trendLoading, tabs, pendingCount, syncState, reload, dibacaAt, admin, bacaSaja } = useApp();
   (0, import_react8.useEffect)(() => {
     if (!dibacaAt || Date.now() - dibacaAt > 8e3) void reload(void 0, true);
   }, [reload, dibacaAt]);
@@ -38746,7 +38836,7 @@ function DashboardView() {
   const realPct = total && total.pagu ? total.realisasi / total.pagu * 100 : 0;
   const timUtama = TIMS.find((t) => t.id === settings.timUtama);
   const timSendiri = timTerkunci(settings.timUtama, admin);
-  const bolehIsi = (id) => !timSendiri || timSendiri.id === id;
+  const bolehIsi = (id) => !bacaSaja && (!timSendiri || timSendiri.id === id);
   const kosongUtama = timUtama ? timUtama.subs.flatMap((sub) => week.dates.filter((d) => !week.kegiatan[slotKey(timUtama.id, sub, d)]).map((d) => ({ sub, d }))) : [];
   const belum = SLOT_ROWS.map(({ tim, sub }) => ({
     tim,
@@ -38784,7 +38874,7 @@ function DashboardView() {
           /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(I.refresh, { className: "h-4 w-4" }),
           " Ambil data terbaru"
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(Btn, { variant: "ghost", onClick: () => go("isi", { mode: "chat" }), children: [
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(Btn, { variant: "ghost", onClick: () => go("isi", { mode: "chat" }), disabled: bacaSaja, children: [
           /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(I.chat, { className: "h-4 w-4" }),
           "Isi lewat chat"
         ] }),
@@ -38792,10 +38882,12 @@ function DashboardView() {
           Btn,
           {
             variant: "brand",
+            disabled: bacaSaja,
+            title: bacaSaja ? `Minggu \u201C${week.tab}\u201D sudah ditutup \u2014 minta admin membuka kuncinya untuk mengedit` : void 0,
             onClick: () => go("isi", timUtama && kosongUtama[0] ? { tim: timUtama.id, sub: kosongUtama[0].sub, d: kosongUtama[0].d } : {}),
             children: [
               /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(I.pen, { className: "h-4 w-4" }),
-              timUtama && kosongUtama[0] ? `Isi ${hariDari(kosongUtama[0].d)}, ${tanggalPendek(kosongUtama[0].d)}` : "Isi laporan"
+              bacaSaja ? "Minggu ini hanya lihat" : timUtama && kosongUtama[0] ? `Isi ${hariDari(kosongUtama[0].d)}, ${tanggalPendek(kosongUtama[0].d)}` : "Isi laporan"
             ]
           }
         )

@@ -9,12 +9,15 @@ export default function ItemsEditor({
   placeholder = "Tulis kegiatan, tekan Enter…",
   onSubmit,
   autoFocus,
+  bacaSaja = false,
 }: {
   items: string[];
   onChange: (items: string[]) => void;
   placeholder?: string;
   onSubmit?: () => void;
   autoFocus?: boolean;
+  /** Minggu lama: isian hanya ditampilkan, tidak bisa diubah. */
+  bacaSaja?: boolean;
 }) {
   const [draft, setDraft] = useState("");
   const addRef = useRef<HTMLTextAreaElement | null>(null);
@@ -36,6 +39,28 @@ export default function ItemsEditor({
     [n[i], n[j]] = [n[j], n[i]];
     onChange(n);
   };
+
+  if (bacaSaja) {
+    return (
+      <div className="space-y-2" data-baca-saja>
+        {items.length === 0 && (
+          <p className="rounded-xl border border-dashed border-[#d6d5cf] px-3 py-3 text-[13px] text-[#a9a8a2]">
+            (belum ada isian)
+          </p>
+        )}
+        {items.map((it, i) => (
+          <div key={i} className="flex items-start gap-2 rounded-xl border border-line bg-paper px-3 py-2">
+            <span className="mt-0.5 w-5 shrink-0 text-right font-mono text-[12px] font-bold text-muted">{i + 1}.</span>
+            <p className="min-w-0 flex-1 whitespace-pre-wrap text-[14px] leading-relaxed">{it}</p>
+          </div>
+        ))}
+        <p className="pl-1 text-[11.5px] text-muted">
+          <I.lock className="mr-1 inline h-3 w-3 align-[-2px]" />
+          Minggu ini hanya bisa dilihat. Minta admin membuka kuncinya untuk mengedit.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">

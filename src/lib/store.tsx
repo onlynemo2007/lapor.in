@@ -202,14 +202,21 @@ type Ctx = {
   skripInfo: SkripInfo | null;
   /** Tab minggu aktif sudah ditutup (baca-saja) menurut skrip. */
   terkunciAktif: boolean;
+  /** Minggu aktif tidak boleh diubah (bukan admin): cukup dilihat, isian tidak bisa disimpan. */
+  bacaSaja: boolean;
   /** Mode admin aktif di perangkat ini (PIN sudah diverifikasi skrip). */
   admin: boolean;
   /** gid minggu terbaru menurut skrip (kosong bila belum terbaca). */
   mingguTerbaru: string;
   /** Minggu `gid` terkunci: bukan minggu terbaru dan belum dibuka admin di skrip. */
   terkunciGid: (gid: string) => boolean;
-  /** Boleh membuka (melihat/mengisi) minggu `gid`: tidak terkunci, atau sedang mode admin. */
+  /**
+   * Boleh membuka minggu `gid`. Minggu lama selalu boleh DILIHAT (baca-saja);
+   * yang dibatasi adalah mengubah isinya — lihat `bolehEditMinggu`.
+   */
   bolehBukaMinggu: (gid: string) => boolean;
+  /** Boleh MENGUBAH isi minggu `gid`: minggu terbaru / yang dibuka admin, atau mode admin. */
+  bolehEditMinggu: (gid: string) => boolean;
   /** Buka / kunci kembali satu minggu — hanya berhasil bila PIN admin benar. */
   aturKunciMinggu: (gid: string, buka: boolean) => Promise<{ ok: boolean; error?: string }>;
   /** Periksa PIN admin ke skrip; bila benar disimpan di perangkat ini. */
@@ -243,6 +250,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const putusRef = useRef<boolean>(bacaKoneksi()?.putus === true);
   /** gid yang sedang dikirim ULANG seluruhnya (butuh PIN admin di skrip). */
   const penuhRef = useRef<string | null>(null);
+  /**
+   * Info kunci minggu untuk pengiriman: minggu yang sudah ditutup tidak boleh
+   * dikirimi isian (skrip juga menolaknya), jadi kiriman untuk tab itu ditahan.
+   */
+  const kunciRef = useRef<{ terbaru: string; dibuka: string[]; admin: boolean }>({ terbaru: "", dibuka: [], admin: false });
 
   const sending = useRef(false);
   const again = useRef(false);
@@ -371,6 +383,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         for (let putaran = 0; putaran < 20; putaran++) {
           const w = Object.values(dataRef.current.weeks).find((x) => !sudah.has(x.gid) && Object.keys(x.dirty ?? {}).length);
           if (!w) break;
+          const kunci = kunciRef.current;
+          // minggu lama yang sudah ditutup: tahan kiriman sampai admin membukanya
+          if (
+            kunci.terbaru &&
+            w.gid !== kunci.terbaru &&
+            !kunci.admin &&
+            !kunci.dibuka.includes(w.gid)
+          ) {
+            sudah.add(w.gid);
+            continue;
+          }
           const k = siapkanKiriman(w, st.token, st.nama);
           sudah.add(w.gid);
           if (!k) continue; // tidak ada isi yang bisa ditulis (mis. presensi belum lengkap)
@@ -843,20 +866,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [mingguTerbaru, skripInfo],
   );
 
-  const bolehBukaMinggu = useCallback(
-    (gid: string) => !terkunciGid(gid) || admin,
-    [terkunciGid, admin],
+  /**
+   * Minggu lama selalu boleh dibuka untuk DILIHAT. Yang butuh admin adalah
+   * MENGEDIT isinya (`bolehEditMinggu`) — skrip juga menolak tulisan ke minggu
+   * yang sudah ditutup.
+   */
+  const bolehBukaMinggu = useCallback((gid: string) => !!gid, []);
+
+  /** Minggu terbaru / yang dibuka admin boleh diisi; admin (PIN) boleh semua minggu. */
+  const bolehEditMinggu = useCallback((gid: string) => !terkunciGid(gid) || admin, [terkunciGid, admin]);
+
+  // dipakai saat mengirim isian (lihat flush): minggu yang ditutup tidak dikirimi
+  kunciRef.current = { terbaru: mingguTerbaru, dibuka: skripInfo?.dibuka ?? [], admin };
+
+  /** Minggu yang sedang dibuka hanya bisa dilihat (tidak bisa diubah). */
+  const bacaSaja = useMemo(
+    () => !admin && !!data.settings.activeGid && terkunciGid(data.settings.activeGid),
+    [admin, data.settings.activeGid, terkunciGid],
   );
 
   /**
-   * Saat dashboard / isi laporan dibuka, tab yang aktif dipindah ke minggu terbaru.
-   * Minggu lama hanya bisa dibuka bila admin memasukkan PIN (mode admin) atau
-   * membuka kuncinya di skrip.
+   * Saat aplikasi dibuka, tab aktif dipindah sekali ke minggu terbaru bila yang
+   * tersimpan adalah minggu lama. Setelah itu minggu lama tetap bisa dibuka
+   * (baca-saja) tanpa dipindahkan lagi.
    */
+  const fokusAwal = useRef(false);
   useEffect(() => {
+    if (!mingguTerbaru || fokusAwal.current) return;
+    fokusAwal.current = true;
     const gid = data.settings.activeGid;
-    if (!mingguTerbaru || gid === mingguTerbaru || admin) return;
-    if (!terkunciGid(gid)) return;
+    if (gid === mingguTerbaru || admin || !terkunciGid(gid)) return;
     setSettings({ activeGid: mingguTerbaru });
   }, [mingguTerbaru, admin, data.settings.activeGid, terkunciGid, setSettings]);
 
@@ -892,10 +931,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     periksaSkrip,
     skripInfo,
     terkunciAktif,
+    bacaSaja,
     admin,
     mingguTerbaru,
     terkunciGid,
     bolehBukaMinggu,
+    bolehEditMinggu,
     aturKunciMinggu,
     masukAdmin,
     keluarAdmin,

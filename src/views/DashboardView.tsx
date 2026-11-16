@@ -7,7 +7,7 @@ import { Btn, Card, I, Pill, Progress, SectionTitle, Spinner, cx } from "../comp
 import { StateGate } from "./common";
 
 export default function DashboardView() {
-  const { week, settings, setSettings, trend, loadTrend, trendLoading, tabs, pendingCount, syncState, reload, dibacaAt, admin } = useApp();
+  const { week, settings, setSettings, trend, loadTrend, trendLoading, tabs, pendingCount, syncState, reload, dibacaAt, admin, bacaSaja } = useApp();
 
   // Peta isian harus memakai isi sheet terbaru: baca ulang diam-diam saat dashboard dibuka.
   useEffect(() => {
@@ -47,7 +47,8 @@ export default function DashboardView() {
   const timUtama = TIMS.find((t) => t.id === settings.timUtama);
   // Batas tim: pegawai hanya boleh mengisi tim utamanya sendiri (admin bebas).
   const timSendiri = timTerkunci(settings.timUtama, admin);
-  const bolehIsi = (id: string) => !timSendiri || timSendiri.id === id;
+  // minggu lama (baca-saja) tidak bisa diisi walau timnya sendiri
+  const bolehIsi = (id: string) => !bacaSaja && (!timSendiri || timSendiri.id === id);
   const kosongUtama = timUtama
     ? timUtama.subs.flatMap((sub) => week.dates.filter((d) => !week.kegiatan[slotKey(timUtama.id, sub, d)]).map((d) => ({ sub, d })))
     : [];
@@ -98,18 +99,24 @@ export default function DashboardView() {
           <Btn variant="ghost" size="sm" onClick={() => void reload(undefined, true)} title="Ambil isi terbaru dari Google Sheet">
             <I.refresh className="h-4 w-4" /> Ambil data terbaru
           </Btn>
-          <Btn variant="ghost" onClick={() => go("isi", { mode: "chat" })}>
+          <Btn variant="ghost" onClick={() => go("isi", { mode: "chat" })} disabled={bacaSaja}>
             <I.chat className="h-4 w-4" />
             Isi lewat chat
           </Btn>
           <Btn
             variant="brand"
+            disabled={bacaSaja}
+            title={bacaSaja ? `Minggu “${week.tab}” sudah ditutup — minta admin membuka kuncinya untuk mengedit` : undefined}
             onClick={() =>
               go("isi", timUtama && kosongUtama[0] ? { tim: timUtama.id, sub: kosongUtama[0].sub, d: kosongUtama[0].d } : {})
             }
           >
             <I.pen className="h-4 w-4" />
-            {timUtama && kosongUtama[0] ? `Isi ${hariDari(kosongUtama[0].d)}, ${tanggalPendek(kosongUtama[0].d)}` : "Isi laporan"}
+            {bacaSaja
+              ? "Minggu ini hanya lihat"
+              : timUtama && kosongUtama[0]
+                ? `Isi ${hariDari(kosongUtama[0].d)}, ${tanggalPendek(kosongUtama[0].d)}`
+                : "Isi laporan"}
           </Btn>
         </div>
       </div>

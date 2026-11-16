@@ -28,7 +28,7 @@ const BUKAN_UANG = /(tanggal|tgl|kode|nomor|uraian|keterangan|penerima|nama|bula
 const kolomUang = (label: string) => KOLOM_UANG.test(label || "") && !BUKAN_UANG.test(label || "");
 
 export default function KeuanganView() {
-  const { week, settings, updateWeek, reload, dibacaAt } = useApp();
+  const { week, settings, updateWeek, reload, dibacaAt, bacaSaja } = useApp();
   const toast = useToast();
   const [draft, setDraft] = useState<Record<string, Draft>>({});
   const [selDraft, setSelDraft] = useState<Record<string, string>>({});
@@ -99,6 +99,10 @@ export default function KeuanganView() {
    * - TabelKeuangan → hanya sel milik tabel itu (tombol Simpan di judul tiap tabel)
    */
   const simpan = (lingkup: "semua" | "anggaran" | TabelKeuangan = "semua") => {
+    if (bacaSaja) {
+      toast(`Minggu “${week.tab}” hanya bisa dilihat — minta admin membuka kuncinya`, "err");
+      return;
+    }
     const pakaiKode = lingkup === "semua" || lingkup === "anggaran";
     const pakaiSel = lingkup === "semua" ? selBerubah : lingkup === "anggaran" ? [] : selMilikTabel(lingkup);
     const kodeBerubah = pakaiKode ? berubah : [];
@@ -138,6 +142,10 @@ export default function KeuanganView() {
 
   /** Sisipkan satu baris baru ke tabel keuangan di sheet (sebelum baris Jumlah), lalu baca ulang. */
   const tambahBaris = async (t: TabelKeuangan) => {
+    if (bacaSaja) {
+      toast(`Minggu “${week.tab}” hanya bisa dilihat — baris baru tidak bisa disisipkan`, "err");
+      return;
+    }
     setSisipSibuk(`${t.judul}|${t.header}`);
     try {
       const r = await sisipBarisTabel({
@@ -203,12 +211,22 @@ export default function KeuanganView() {
           >
             <I.print className="h-4 w-4" /> Cetak keuangan
           </Btn>
-          <Btn variant="brand" onClick={() => simpan("semua")} disabled={!berubah.length && !selBerubah.length}>
+          <Btn variant="brand" onClick={() => simpan("semua")} disabled={bacaSaja || (!berubah.length && !selBerubah.length)}>
             <I.check className="h-4 w-4" />
-            Simpan{berubah.length + selBerubah.length ? ` (${berubah.length + selBerubah.length})` : ""}
+            {bacaSaja ? "Hanya lihat" : `Simpan${berubah.length + selBerubah.length ? ` (${berubah.length + selBerubah.length})` : ""}`}
           </Btn>
         </div>
       </div>
+
+      {bacaSaja && (
+        <p className="no-print flex items-start gap-2 rounded-xl border border-warn/30 bg-warn-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-warn">
+          <I.lock className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Minggu <b>“{week.tab}”</b> sudah ditutup: realisasi keuangan hanya bisa <b>dilihat</b>. Minta admin membuka
+            kuncinya lewat menu <b>Kunci minggu</b> untuk mengubah.
+          </span>
+        </p>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-3">
         {(
@@ -370,7 +388,7 @@ export default function KeuanganView() {
                   variant="ghost"
                   size="sm"
                   onClick={() => void tambahBaris(t)}
-                  disabled={!!sisipSibuk}
+                  disabled={!!sisipSibuk || bacaSaja}
                   title="Sisipkan satu baris baru sebelum baris Jumlah dan simpan ke sheet"
                 >
                   {sisipSibuk === `${t.judul}|${t.header}` ? <Spinner className="h-4 w-4" /> : <I.plus className="h-4 w-4" />}
@@ -380,7 +398,7 @@ export default function KeuanganView() {
                   variant="brand"
                   size="sm"
                   onClick={() => simpan(t)}
-                  disabled={!milik.length}
+                  disabled={bacaSaja || !milik.length}
                   aria-label={`Simpan tabel ${t.judul}`}
                   title="Simpan perubahan pada tabel ini"
                 >

@@ -12,7 +12,7 @@ const hitungJumlahNama = (ket: string) =>
     .filter(Boolean).length;
 
 export default function PresensiView() {
-  const { week, settings, updateWeek, reload } = useApp();
+  const { week, settings, updateWeek, reload, bacaSaja } = useApp();
   const toast = useToast();
   const [pres, setPres] = useState<Record<string, Presensi>>({});
   const [apl, setApl] = useState<Record<string, Aplikasi>>({});
@@ -88,6 +88,10 @@ export default function PresensiView() {
   const setA = (k: string, patch: Partial<Aplikasi>) => setApl((s) => ({ ...s, [k]: { ...s[k], ...patch } }));
 
   const simpan = () => {
+    if (bacaSaja) {
+      toast(`Minggu “${week?.tab ?? ""}” hanya bisa dilihat — minta admin membuka kuncinya`, "err");
+      return;
+    }
     updateWeek((w) => {
       const presensi = { ...w.presensi };
       const aplikasi = { ...w.aplikasi };
@@ -120,6 +124,10 @@ export default function PresensiView() {
 
   const tambahBaris = async () => {
     if (!tabelApl) return;
+    if (bacaSaja) {
+      toast(`Minggu “${week.tab}” hanya bisa dilihat — baris baru tidak bisa disisipkan`, "err");
+      return;
+    }
     setSisipSibuk(true);
     try {
       const r = await sisipBarisTabel({
@@ -166,12 +174,22 @@ export default function PresensiView() {
           >
             <I.print className="h-4 w-4" /> Cetak presensi
           </Btn>
-          <Btn variant="brand" onClick={simpan} disabled={!adaPerubahan}>
+          <Btn variant="brand" onClick={simpan} disabled={!adaPerubahan || bacaSaja}>
             <I.check className="h-4 w-4" />
-            Simpan presensi{adaPerubahan ? ` (${changedP.length + changedA.length + changedSel.length})` : ""}
+            {bacaSaja ? "Hanya lihat" : `Simpan presensi${adaPerubahan ? ` (${changedP.length + changedA.length + changedSel.length})` : ""}`}
           </Btn>
         </div>
       </div>
+
+      {bacaSaja && (
+        <p className="no-print flex items-start gap-2 rounded-xl border border-warn/30 bg-warn-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-warn">
+          <I.lock className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Minggu <b>“{week.tab}”</b> sudah ditutup: presensi hanya bisa <b>dilihat</b>. Minta admin membuka kuncinya
+            lewat menu <b>Kunci minggu</b> untuk mengubah.
+          </span>
+        </p>
+      )}
 
       <div className="space-y-3">
         {week.dates.map((d) => {
@@ -265,7 +283,7 @@ export default function PresensiView() {
             right={
               <div className="flex items-center gap-2">
                 <Pill>{tabelApl.kolom.length} kolom</Pill>
-                <Btn variant="ghost" size="sm" onClick={() => void tambahBaris()} disabled={sisipSibuk} title="Sisipkan satu baris baru di tabel ini dan simpan ke sheet">
+                <Btn variant="ghost" size="sm" onClick={() => void tambahBaris()} disabled={sisipSibuk || bacaSaja} title="Sisipkan satu baris baru di tabel ini dan simpan ke sheet">
                   {sisipSibuk ? <Spinner className="h-4 w-4" /> : <I.plus className="h-4 w-4" />}
                   Tambah baris
                 </Btn>
@@ -388,7 +406,7 @@ export default function PresensiView() {
       {adaPerubahan && (
         <div className="no-print anim-pop sticky bottom-20 z-20 flex items-center justify-between gap-3 rounded-2xl bg-ink px-4 py-3 text-white shadow-xl lg:bottom-6">
           <span className="text-[13px] font-medium">{changedP.length + changedA.length + changedSel.length} isian presensi diubah</span>
-          <Btn variant="brand" size="sm" onClick={simpan}>
+          <Btn variant="brand" size="sm" onClick={simpan} disabled={bacaSaja}>
             <I.check className="h-4 w-4" /> Simpan
           </Btn>
         </div>

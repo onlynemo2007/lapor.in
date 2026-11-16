@@ -46,7 +46,7 @@ export function useRoute() {
 /* --------------------------------- shell --------------------------------- */
 
 export default function Shell({ view, children }: { view: View; children: ReactNode }) {
-  const { settings, setSettings, tabs, week, loadState, reload, pendingCount, syncState, admin, bolehBukaMinggu } =
+  const { settings, setSettings, tabs, week, loadState, reload, pendingCount, syncState, admin, bolehEditMinggu } =
     useApp();
   const gagalSinkron = syncState.status === "error";
   const [editNama, setEditNama] = useState(false);
@@ -145,9 +145,9 @@ export default function Shell({ view, children }: { view: View; children: ReactN
               aria-label="Pilih minggu (tab sheet)"
             >
               {tabs.map((t) => (
-                <option key={t.gid} value={t.gid} disabled={!bolehBukaMinggu(t.gid)}>
+                <option key={t.gid} value={t.gid}>
                   Tab {t.name}
-                  {bolehBukaMinggu(t.gid) ? "" : " · terkunci"}
+                  {bolehEditMinggu(t.gid) ? "" : " · hanya lihat"}
                 </option>
               ))}
               {/* tab aktif yang belum ada di daftar (mis. baru dibuat rekan) tetap tampil */}
@@ -164,8 +164,8 @@ export default function Shell({ view, children }: { view: View; children: ReactN
             className={cx("h-10 shrink-0 px-2.5", admin && "text-brand")}
             title={
               admin
-                ? "Mode admin aktif — minggu lama boleh dibuka di perangkat ini"
-                : "Minggu lama dikunci. Buka mode admin (PIN) untuk mengedit minggu lama."
+                ? "Mode admin aktif — minggu lama boleh diedit di perangkat ini"
+                : "Minggu lama hanya bisa dilihat. Buka mode admin (PIN) untuk mengeditnya."
             }
             onClick={() => setAturKunci(true)}
           >
@@ -289,7 +289,7 @@ function KunciMinggu({ onClose }: { onClose: () => void }) {
     setBusy(false);
     if (r.ok) {
       setPin("");
-      setPesan({ ok: true, text: "Mode admin aktif di perangkat ini. Minggu lama kini bisa dipilih dan dibuka." });
+      setPesan({ ok: true, text: "Mode admin aktif di perangkat ini. Minggu lama kini bisa diedit." });
     } else {
       setPesan({ ok: false, text: r.error ?? "PIN admin salah." });
     }
@@ -319,8 +319,8 @@ function KunciMinggu({ onClose }: { onClose: () => void }) {
           <div className="min-w-0">
             <h2 className="text-[17px] font-bold tracking-tight">Kunci minggu</h2>
             <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
-              Minggu terbaru ({mingguTerbaru ? nama(mingguTerbaru) : "—"}) selalu bisa diisi. Minggu lama terkunci
-              otomatis; hanya admin yang boleh membukanya untuk koreksi.
+              Minggu terbaru ({mingguTerbaru ? nama(mingguTerbaru) : "—"}) selalu bisa diisi. Minggu lama otomatis
+              menjadi <b>hanya lihat</b>; admin bisa membukanya (PIN) supaya isinya dapat diedit lagi.
             </p>
           </div>
         </div>
@@ -341,7 +341,11 @@ function KunciMinggu({ onClose }: { onClose: () => void }) {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13px] font-semibold">Tab {t.name}</span>
                     <span className="block text-[11px] text-muted">
-                      {t.gid === mingguTerbaru ? "Minggu terbaru · bisa diisi" : kunci ? "Terkunci · baca-saja" : "Dibuka untuk koreksi"}
+                      {t.gid === mingguTerbaru
+                        ? "Minggu terbaru · bisa diisi"
+                        : kunci
+                          ? "Minggu lalu · hanya lihat"
+                          : "Dibuka admin · bisa diedit"}
                     </span>
                   </span>
                   {t.gid !== mingguTerbaru && admin && (
@@ -357,7 +361,7 @@ function KunciMinggu({ onClose }: { onClose: () => void }) {
                       {kunci ? "Buka" : "Kunci"}
                     </Btn>
                   )}
-                  {!kunci && !aktif && (
+                  {!aktif && (
                     <Btn
                       variant="ghost"
                       size="sm"
@@ -366,8 +370,9 @@ function KunciMinggu({ onClose }: { onClose: () => void }) {
                         setSettings({ activeGid: t.gid });
                         onClose();
                       }}
+                      title={kunci ? "Buka tab minggu ini untuk dilihat (baca-saja)" : "Pakai tab minggu ini"}
                     >
-                      Pakai
+                      {kunci ? "Lihat" : "Pakai"}
                     </Btn>
                   )}
                   {aktif && <span className="shrink-0 rounded-full bg-ink px-2 py-1 text-[10.5px] font-bold text-white">Aktif</span>}
