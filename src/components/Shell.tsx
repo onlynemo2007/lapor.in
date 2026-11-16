@@ -4,8 +4,9 @@ import { SPREADSHEET_ID, TIMS } from "../lib/model";
 import { Btn, I, Logo, Spinner, cx } from "./ui";
 import { StatusSinkron } from "./SyncBadge";
 import { PeringatanKoneksi, PeringatanMinggu } from "./Koneksi";
+import { VIEW_AWAL, ruteDariHash } from "../lib/rute";
 
-export type View = "dashboard" | "isi" | "presensi" | "keuangan" | "wfh" | "pratinjau" | "sinkron";
+export type View = typeof VIEW_AWAL | "dashboard" | "isi" | "presensi" | "keuangan" | "wfh" | "pratinjau" | "sinkron";
 
 export const NAV: { id: View; label: string; short: string; icon: keyof typeof I }[] = [
   { id: "dashboard", label: "Dashboard", short: "Dashboard", icon: "home" },
@@ -20,10 +21,8 @@ export const NAV: { id: View; label: string; short: string; icon: keyof typeof I
 /* --------------------------------- routing --------------------------------- */
 
 export function parseHash(): { view: View; params: URLSearchParams } {
-  const h = window.location.hash.replace(/^#\/?/, "");
-  const [path, qs] = h.split("?");
-  const view = (NAV.find((n) => n.id === path)?.id ?? "dashboard") as View;
-  return { view, params: new URLSearchParams(qs ?? "") };
+  // Alamat utama tanpa hash = halaman pilih (Laporan Mingguan atau WFH).
+  return ruteDariHash(window.location.hash, NAV.map((n) => n.id)) as { view: View; params: URLSearchParams };
 }
 
 export function go(view: View, params?: Record<string, string>) {
@@ -56,13 +55,17 @@ export default function Shell({ view, children }: { view: View; children: ReactN
     <div className="min-h-screen lg:pl-[248px]">
       {/* sidebar */}
       <aside className="no-print fixed inset-y-0 left-0 z-40 hidden w-[248px] flex-col border-r border-line bg-white lg:flex">
-        <div className="flex items-center gap-2.5 px-5 pb-4 pt-5">
+        <a
+          href="#/"
+          title="Kembali ke halaman pilih (Laporan Mingguan / WFH)"
+          className="flex items-center gap-2.5 rounded-xl px-5 pb-4 pt-5 transition-opacity hover:opacity-80"
+        >
           <Logo className="h-8 w-8" />
           <div>
             <p className="text-[16px] font-extrabold leading-none tracking-tight">Lapor.in</p>
             <p className="mt-1 text-[11px] text-muted">Tim Dukman · PSSSDMKP</p>
           </div>
-        </div>
+        </a>
 
         <nav className="mt-2 flex-1 space-y-0.5 px-3">
           {NAV.map((n) => {
@@ -90,6 +93,13 @@ export default function Shell({ view, children }: { view: View; children: ReactN
         </nav>
 
         <div className="space-y-3 border-t border-line p-4">
+          <a
+            href="#/"
+            className="flex items-center gap-2 rounded-xl px-3 py-2 text-[12.5px] font-semibold text-ink transition-colors hover:bg-paper"
+          >
+            <I.chev className="h-4 w-4 rotate-180 text-brand" />
+            Halaman pilih
+          </a>
           <a
             href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit#gid=${settings.activeGid}`}
             target="_blank"
@@ -120,7 +130,9 @@ export default function Shell({ view, children }: { view: View; children: ReactN
       {/* topbar */}
       <header className="no-print sticky top-0 z-30 border-b border-line bg-paper/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-[1180px] items-center gap-3 px-4 py-3 lg:px-8">
-          <Logo className="h-7 w-7 lg:hidden" />
+          <a href="#/" title="Kembali ke halaman pilih" aria-label="Halaman pilih" className="shrink-0 lg:hidden">
+            <Logo className="h-7 w-7" />
+          </a>
 
           <label className="relative flex min-w-0 items-center">
             <I.cal className="pointer-events-none absolute left-3 h-4 w-4 text-muted" />

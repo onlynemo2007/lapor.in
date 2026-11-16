@@ -124,6 +124,23 @@ Baris rekap di tabel Realisasi Anggaran (mis. `032.12.DL`, `7948`, `2378`, `2378
 Skrip **v2.3** wajib dipasang agar `paksa` dihormati; pada v2.2 baris rekap tetap dilaporkan
 "tidak ditimpa".
 
+## Halaman pilih saat alamat utama dibuka
+
+Membuka alamat utama (`/` tanpa hash) menampilkan **halaman pilih** (bukan langsung dashboard): dua kartu,
+**Laporan Mingguan** dan **Laporan WFH**, masing-masing dengan alamat sendiri sehingga bisa disimpan sebagai
+bookmark atau dibagikan:
+
+| Alamat | Isi |
+| --- | --- |
+| `/` (tanpa hash) | halaman pilih — tanpa sidebar |
+| `/#/isi` | langsung ke Isi laporan mingguan |
+| `/#/wfh` | langsung ke halaman Laporan WFH |
+| `/#/dashboard` | dashboard (rekap, pratinjau, sinkronisasi lewat menu) |
+
+Logikanya di `src/lib/rute.ts` (`ruteDariHash`, `VIEW_AWAL`); halaman pilih ada di `src/views/LandingView.tsx`
+dan dirender di luar `Shell` (`src/App.tsx`). Hash tak dikenal juga diarahkan ke halaman pilih, bukan halaman kosong.
+Logo di sidebar, logo di bilah atas HP, dan tautan **Halaman pilih** di kaki sidebar membawa kembali ke `/`.
+
 ## Menu Laporan WFH
 
 Sidebar punya menu **Laporan WFH** yang membuka formulir WFH tim (`src/lib/wfh.ts`,
@@ -185,4 +202,5 @@ tetap dipertahankan saat pembacaan ulang (tidak tertimpa).
 | `src/lib/sheet.ts` | Parser CSV tab, penulisan & pembuatan tab via Apps Script, kode `Kode.gs` siap tempel |
 | `src/lib/sync.ts` | Mesin sinkron: paket kiriman, penanda terkirim, verifikasi |
 | `src/lib/store.tsx` | State aplikasi + pengatur sinkron otomatis (jeda, ulang, offline) |
-| `src/views/` | Dashboard, Isi laporan, Presensi, Pratinjau, Sinkronisasi |
+| `src/lib/rute.ts` | Routing hash: alamat utama = halaman pilih, `#/isi`, `#/wfh`, `#/dashboard` |
+| `src/views/` | Halaman pilih (landing), Dashboard, Isi laporan, Presensi, WFH, Pratinjau, Sinkronisasi |
