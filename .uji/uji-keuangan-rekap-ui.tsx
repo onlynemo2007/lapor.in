@@ -45,7 +45,8 @@ async function main() {
   const hasil: { nama: string; lulus: boolean; info?: string }[] = [];
   const cek = (nama: string, lulus: boolean, info = "") => hasil.push({ nama, lulus, info });
 
-  localStorage.setItem("laporin:v3", JSON.stringify({ v: 2, settings: { nama: "Uji", timUtama: "humas" }, weeks: {}, trend: {}, log: [] }));
+  // menu ini milik satu tim: presensi → kepegawaian, keuangan → keuangan
+  localStorage.setItem("laporin:v3", JSON.stringify({ v: 2, settings: { nama: "Uji", timUtama: "keuangan" }, weeks: {}, trend: {}, log: [] }));
 
   const wadah = document.createElement("div");
   document.body.appendChild(wadah);

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { setKeuangan, setSelKeuangan, useApp } from "../lib/store";
-import { kodeInduk, parseAngka, rupiah, rupiahPendek, selKey, serapan, totalAnggaran, type TabelKeuangan } from "../lib/model";
+import { bolehIsiMenu, kodeInduk, parseAngka, rupiah, rupiahPendek, selKey, serapan, timMenu, totalAnggaran, type TabelKeuangan } from "../lib/model";
 import { SCRIPT_VERSI } from "../lib/sheet";
 import { sisipBarisTabel } from "../lib/sisip";
 import {
@@ -28,8 +28,13 @@ const BUKAN_UANG = /(tanggal|tgl|kode|nomor|uraian|keterangan|penerima|nama|bula
 const kolomUang = (label: string) => KOLOM_UANG.test(label || "") && !BUKAN_UANG.test(label || "");
 
 export default function KeuanganView() {
-  const { week, settings, updateWeek, reload, dibacaAt, bacaSaja } = useApp();
+  const { week, settings, updateWeek, reload, dibacaAt, bacaSaja, admin } = useApp();
   const toast = useToast();
+  /** Realisasi keuangan hanya boleh diisi tim Keuangan; tim lain (dan bukan admin) hanya melihat. */
+  const bolehEditMenu = bolehIsiMenu(settings.timUtama, admin, "keuangan");
+  const timPemilik = timMenu("keuangan");
+  /** Isian dikunci bila minggu ditutup ATAU menu bukan hak tim ini. */
+  const terkunciIsi = bacaSaja || !bolehEditMenu;
   const [draft, setDraft] = useState<Record<string, Draft>>({});
   const [selDraft, setSelDraft] = useState<Record<string, string>>({});
   const [cari, setCari] = useState("");
@@ -99,6 +104,10 @@ export default function KeuanganView() {
    * - TabelKeuangan → hanya sel milik tabel itu (tombol Simpan di judul tiap tabel)
    */
   const simpan = (lingkup: "semua" | "anggaran" | TabelKeuangan = "semua") => {
+    if (!bolehEditMenu) {
+      toast(`Realisasi keuangan hanya bisa diisi tim ${timPemilik?.label ?? "Keuangan"} — Anda hanya bisa melihat`, "err");
+      return;
+    }
     if (bacaSaja) {
       toast(`Minggu “${week.tab}” hanya bisa dilihat — minta admin membuka kuncinya`, "err");
       return;
@@ -142,6 +151,10 @@ export default function KeuanganView() {
 
   /** Sisipkan satu baris baru ke tabel keuangan di sheet (sebelum baris Jumlah), lalu baca ulang. */
   const tambahBaris = async (t: TabelKeuangan) => {
+    if (!bolehEditMenu) {
+      toast(`Tabel keuangan hanya bisa diubah tim ${timPemilik?.label ?? "Keuangan"}`, "err");
+      return;
+    }
     if (bacaSaja) {
       toast(`Minggu “${week.tab}” hanya bisa dilihat — baris baru tidak bisa disisipkan`, "err");
       return;
@@ -211,13 +224,23 @@ export default function KeuanganView() {
           >
             <I.print className="h-4 w-4" /> Cetak keuangan
           </Btn>
-          <Btn variant="brand" onClick={() => simpan("semua")} disabled={bacaSaja || (!berubah.length && !selBerubah.length)}>
+          <Btn variant="brand" onClick={() => simpan("semua")} disabled={terkunciIsi || (!berubah.length && !selBerubah.length)}>
             <I.check className="h-4 w-4" />
-            {bacaSaja ? "Hanya lihat" : `Simpan${berubah.length + selBerubah.length ? ` (${berubah.length + selBerubah.length})` : ""}`}
+            {terkunciIsi ? "Hanya lihat" : `Simpan${berubah.length + selBerubah.length ? ` (${berubah.length + selBerubah.length})` : ""}`}
           </Btn>
         </div>
       </div>
 
+      {!bolehEditMenu && (
+        <p className="no-print flex items-start gap-2 rounded-xl border border-warn/30 bg-warn-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-warn">
+          <I.lock className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Realisasi keuangan hanya bisa diisi, diubah, dan disimpan oleh tim{" "}
+            <b>{timPemilik?.label ?? "Keuangan"}</b>. {settings.timUtama ? "Anda hanya bisa melihat isinya." : ""}{" "}
+            Salah tim? Ganti tim utama lewat menu profil di kiri bawah.
+          </span>
+        </p>
+      )}
       {bacaSaja && (
         <p className="no-print flex items-start gap-2 rounded-xl border border-warn/30 bg-warn-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-warn">
           <I.lock className="mt-0.5 h-4 w-4 shrink-0" />
@@ -265,7 +288,7 @@ export default function KeuanganView() {
                 variant="brand"
                 size="sm"
                 onClick={() => simpan("anggaran")}
-                disabled={!berubah.length}
+                disabled={!berubah.length || terkunciIsi}
                 aria-label="Simpan tabel realisasi anggaran"
                 title="Simpan perubahan pagu/realisasi tabel ini"
               >
@@ -324,12 +347,13 @@ export default function KeuanganView() {
                           <input
                             value={d.uraian}
                             onChange={(e) => set(a.kode, { uraian: e.target.value })}
+                            readOnly={terkunciIsi}
                             className="w-full rounded-lg border border-transparent bg-transparent px-1.5 py-1 text-[12.5px] outline-none transition hover:border-line focus:border-brand focus:bg-white"
                           />
                         )}
                       </td>
                       <td className="py-2 pr-2">
-                        <InputRp value={d.pagu} onChange={(v) => set(a.kode, { pagu: v })} aria-label={`Pagu ${a.uraian}`} warn={kotor} />
+                        <InputRp value={d.pagu} onChange={(v) => set(a.kode, { pagu: v })} aria-label={`Pagu ${a.uraian}`} warn={kotor} readOnly={terkunciIsi} />
                       </td>
                       <td className="py-2 pr-2">
                         <InputRp
@@ -337,6 +361,7 @@ export default function KeuanganView() {
                           onChange={(v) => set(a.kode, { realisasi: v })}
                           aria-label={`Realisasi ${a.uraian}`}
                           warn={kotor}
+                          readOnly={terkunciIsi}
                         />
                       </td>
                       <td className="py-2 pr-2 text-right font-mono text-[12px] text-muted">
@@ -388,7 +413,7 @@ export default function KeuanganView() {
                   variant="ghost"
                   size="sm"
                   onClick={() => void tambahBaris(t)}
-                  disabled={!!sisipSibuk || bacaSaja}
+                  disabled={!!sisipSibuk || terkunciIsi}
                   title="Sisipkan satu baris baru sebelum baris Jumlah dan simpan ke sheet"
                 >
                   {sisipSibuk === `${t.judul}|${t.header}` ? <Spinner className="h-4 w-4" /> : <I.plus className="h-4 w-4" />}
@@ -398,7 +423,7 @@ export default function KeuanganView() {
                   variant="brand"
                   size="sm"
                   onClick={() => simpan(t)}
-                  disabled={bacaSaja || !milik.length}
+                  disabled={terkunciIsi || !milik.length}
                   aria-label={`Simpan tabel ${t.judul}`}
                   title="Simpan perubahan pada tabel ini"
                 >
@@ -440,6 +465,7 @@ export default function KeuanganView() {
                               onChange={(v) => setSelDraft((d) => ({ ...d, [kunci]: v }))}
                               warn={kotor}
                               className="min-w-[110px]"
+                              readOnly={terkunciIsi}
                               aria-label={`${t.judul} baris ${r.nomor} kolom ${k.label}`}
                             />
                           ) : (
@@ -447,9 +473,11 @@ export default function KeuanganView() {
                               value={nilai(kunci)}
                               onChange={(e) => setSelDraft((d) => ({ ...d, [kunci]: e.target.value }))}
                               placeholder="—"
+                              readOnly={terkunciIsi}
                               className={cx(
                                 "w-full min-w-[92px] rounded-lg border bg-white px-2 py-1.5 text-[12px] outline-none focus:border-brand",
                                 kotor ? "border-warn bg-warn-soft/40" : "border-line",
+                                terkunciIsi && "cursor-default bg-paper text-muted",
                               )}
                             />
                           )}

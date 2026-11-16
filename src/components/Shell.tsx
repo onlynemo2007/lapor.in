@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useApp } from "../lib/store";
-import { SPREADSHEET_ID, TIMS } from "../lib/model";
+import { SPREADSHEET_ID, TIMS, bolehIsiMenu } from "../lib/model";
 import { Btn, I, Logo, Spinner, cx } from "./ui";
 import { StatusSinkron } from "./SyncBadge";
 import { PeringatanKoneksi, PeringatanMinggu } from "./Koneksi";
@@ -48,6 +48,9 @@ export function useRoute() {
 export default function Shell({ view, children }: { view: View; children: ReactNode }) {
   const { settings, setSettings, tabs, week, loadState, reload, pendingCount, syncState, admin, bolehEditMinggu } =
     useApp();
+  /** Presensi milik tim Kepegawaian, realisasi keuangan milik tim Keuangan. */
+  const menuTerkunci = (id: string) =>
+    (id === "presensi" || id === "keuangan") && !bolehIsiMenu(settings.timUtama, admin, id);
   const gagalSinkron = syncState.status === "error";
   const [editNama, setEditNama] = useState(false);
   const [aturKunci, setAturKunci] = useState(false);
@@ -84,6 +87,14 @@ export default function Shell({ view, children }: { view: View; children: ReactN
               >
                 <Icon className="h-[18px] w-[18px]" />
                 {n.label}
+                {menuTerkunci(n.id) && (
+                  <span
+                    className="ml-auto shrink-0"
+                    title={n.id === "presensi" ? "Hanya tim Kepegawaian yang bisa mengisi" : "Hanya tim Keuangan yang bisa mengisi"}
+                  >
+                    <I.lock className={cx("h-3.5 w-3.5", on ? "text-white/70" : "text-[#b9b8b2]")} />
+                  </span>
+                )}
                 {n.id === "sinkron" && pendingCount > 0 && (
                   <span className={cx("ml-auto rounded-full px-2 py-0.5 text-[10.5px] font-bold", gagalSinkron ? "bg-bad-soft text-bad" : on ? "bg-white/20 text-white" : "bg-warn-soft text-warn")}>
                     {pendingCount}
@@ -505,7 +516,9 @@ function Profil({ onClose }: { onClose: () => void }) {
 
         <p className="mt-2 text-[11.5px] leading-relaxed text-muted">
           Form cepat, Asisten chat, dan Rencana minggu depan terkunci ke tim ini agar isian tidak tertukar antar tim.
-          Admin (mode PIN) tetap bisa mengisi semua tim.
+          Menu <b className="text-ink">Presensi</b> hanya bisa diisi tim Kepegawaian dan{" "}
+          <b className="text-ink">Realisasi Keuangan</b> hanya tim Keuangan — tim lain hanya melihat. Admin (mode PIN)
+          tetap bisa mengisi semua.
         </p>
 
         <div className="mt-6 flex justify-end gap-2">

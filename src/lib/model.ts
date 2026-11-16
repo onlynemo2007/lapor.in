@@ -81,6 +81,24 @@ export const timById = (id: string) => TIMS.find((t) => t.id === id);
 export const timTerkunci = (timUtama: string, admin: boolean): Tim | null =>
   admin ? null : timById(timUtama) ?? null;
 
+/** Menu yang hanya boleh diisi oleh satu tim tertentu (tim lain hanya melihat). */
+export const MENU_TIM = { presensi: "kepegawaian", keuangan: "keuangan" } as const;
+
+/** Tim pemilik menu (untuk menyebut namanya di layar). */
+export const timMenu = (menu: keyof typeof MENU_TIM): Tim | undefined => timById(MENU_TIM[menu]);
+
+/**
+ * Boleh mengisi/mengubah menu tertentu?
+ * - admin (mode PIN) bebas
+ * - pegawai: hanya bila tim utamanya tim pemilik menu
+ * - belum memilih tim utama: bebas (masa penyiapan)
+ */
+export const bolehIsiMenu = (timUtama: string, admin: boolean, menu: keyof typeof MENU_TIM): boolean => {
+  if (admin) return true;
+  if (!timUtama) return true;
+  return timUtama === MENU_TIM[menu];
+};
+
 /**
  * Tim teknis (VIII–X): Sertifikasi Kompetensi SDMKP, Standardisasi Kompetensi, Penjamin Mutu LSP.
  * Dicetak terpisah dari tim dukman di menu Pratinjau & Cetak.

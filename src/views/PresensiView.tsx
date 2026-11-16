@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { setSelKeuangan, useApp } from "../lib/store";
-import { type Aplikasi, type Presensi, TOTAL_PEGAWAI, emptyAplikasi, emptyPresensi, hariDari, norm, selKey, tanggalPendek, totalPresensi } from "../lib/model";
+import { type Aplikasi, type Presensi, TOTAL_PEGAWAI, bolehIsiMenu, emptyAplikasi, emptyPresensi, hariDari, norm, selKey, tanggalPendek, timMenu, totalPresensi } from "../lib/model";
 import { Btn, Card, I, Pill, SectionTitle, Spinner, cx, useToast } from "../components/ui";
 import { sisipBarisTabel } from "../lib/sisip";
 import { StateGate } from "./common";
@@ -12,8 +12,13 @@ const hitungJumlahNama = (ket: string) =>
     .filter(Boolean).length;
 
 export default function PresensiView() {
-  const { week, settings, updateWeek, reload, bacaSaja } = useApp();
+  const { week, settings, updateWeek, reload, bacaSaja, admin } = useApp();
   const toast = useToast();
+  /** Presensi hanya boleh diisi tim Kepegawaian; tim lain (dan bukan admin) hanya melihat. */
+  const bolehEditMenu = bolehIsiMenu(settings.timUtama, admin, "presensi");
+  const timPemilik = timMenu("presensi");
+  /** Semua isian dikunci bila minggu ditutup ATAU menu bukan hak tim ini. */
+  const terkunciIsi = bacaSaja || !bolehEditMenu;
   const [pres, setPres] = useState<Record<string, Presensi>>({});
   const [apl, setApl] = useState<Record<string, Aplikasi>>({});
   const [buka, setBuka] = useState<string>("");
@@ -88,6 +93,10 @@ export default function PresensiView() {
   const setA = (k: string, patch: Partial<Aplikasi>) => setApl((s) => ({ ...s, [k]: { ...s[k], ...patch } }));
 
   const simpan = () => {
+    if (!bolehEditMenu) {
+      toast(`Presensi hanya bisa diisi tim ${timPemilik?.label ?? "Kepegawaian"} — Anda hanya bisa melihat`, "err");
+      return;
+    }
     if (bacaSaja) {
       toast(`Minggu “${week?.tab ?? ""}” hanya bisa dilihat — minta admin membuka kuncinya`, "err");
       return;
@@ -124,6 +133,10 @@ export default function PresensiView() {
 
   const tambahBaris = async () => {
     if (!tabelApl) return;
+    if (!bolehEditMenu) {
+      toast(`Tabel presensi hanya bisa diubah tim ${timPemilik?.label ?? "Kepegawaian"}`, "err");
+      return;
+    }
     if (bacaSaja) {
       toast(`Minggu “${week.tab}” hanya bisa dilihat — baris baru tidak bisa disisipkan`, "err");
       return;
@@ -174,13 +187,25 @@ export default function PresensiView() {
           >
             <I.print className="h-4 w-4" /> Cetak presensi
           </Btn>
-          <Btn variant="brand" onClick={simpan} disabled={!adaPerubahan || bacaSaja}>
+          <Btn variant="brand" onClick={simpan} disabled={!adaPerubahan || terkunciIsi}>
             <I.check className="h-4 w-4" />
-            {bacaSaja ? "Hanya lihat" : `Simpan presensi${adaPerubahan ? ` (${changedP.length + changedA.length + changedSel.length})` : ""}`}
+            {terkunciIsi
+              ? "Hanya lihat"
+              : `Simpan presensi${adaPerubahan ? ` (${changedP.length + changedA.length + changedSel.length})` : ""}`}
           </Btn>
         </div>
       </div>
 
+      {!bolehEditMenu && (
+        <p className="no-print flex items-start gap-2 rounded-xl border border-warn/30 bg-warn-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-warn">
+          <I.lock className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Presensi hanya bisa diisi, diubah, dan disimpan oleh tim{" "}
+            <b>{timPemilik?.label ?? "Kepegawaian"}</b>. {settings.timUtama ? "Anda hanya bisa melihat isinya." : ""}{" "}
+            Salah tim? Ganti tim utama lewat menu profil di kiri bawah.
+          </span>
+        </p>
+      )}
       {bacaSaja && (
         <p className="no-print flex items-start gap-2 rounded-xl border border-warn/30 bg-warn-soft px-3 py-2.5 text-[12.5px] leading-relaxed text-warn">
           <I.lock className="mt-0.5 h-4 w-4 shrink-0" />
@@ -209,10 +234,10 @@ export default function PresensiView() {
                 </div>
 
                 <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-4">
-                  <NumField label="Hadir" value={p.hadir} onChange={(v) => setP(k, { hadir: num(v) })} strong />
-                  <NumField label="Tanpa ket." value={p.tanpaKet} onChange={(v) => setP(k, { tanpaKet: num(v) ?? 0 })} />
-                  <NumField label="Dinas luar" value={p.dl} onChange={(v) => setP(k, { dl: num(v) ?? 0 })} />
-                  <NumField label="Cuti" value={p.cuti} onChange={(v) => setP(k, { cuti: num(v) ?? 0 })} />
+                  <NumField label="Hadir" value={p.hadir} onChange={(v) => setP(k, { hadir: num(v) })} strong disabled={terkunciIsi} />
+                  <NumField label="Tanpa ket." value={p.tanpaKet} onChange={(v) => setP(k, { tanpaKet: num(v) ?? 0 })} disabled={terkunciIsi} />
+                  <NumField label="Dinas luar" value={p.dl} onChange={(v) => setP(k, { dl: num(v) ?? 0 })} disabled={terkunciIsi} />
+                  <NumField label="Cuti" value={p.cuti} onChange={(v) => setP(k, { cuti: num(v) ?? 0 })} disabled={terkunciIsi} />
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -224,13 +249,15 @@ export default function PresensiView() {
                   ) : (
                     <Pill>belum</Pill>
                   )}
-                  <button
-                    onClick={() => otomatis(k)}
-                    className="rounded-lg border border-line px-2.5 py-1.5 text-[11.5px] font-semibold text-muted transition hover:border-brand hover:text-brand"
-                    title={`Hadir = ${TOTAL_PEGAWAI} − tanpa ket − DL − cuti`}
-                  >
-                    Hitung hadir
-                  </button>
+                  {!terkunciIsi && (
+                    <button
+                      onClick={() => otomatis(k)}
+                      className="rounded-lg border border-line px-2.5 py-1.5 text-[11.5px] font-semibold text-muted transition hover:border-brand hover:text-brand"
+                      title={`Hadir = ${TOTAL_PEGAWAI} − tanpa ket − DL − cuti`}
+                    >
+                      Hitung hadir
+                    </button>
+                  )}
                   <button onClick={() => setBuka(on ? "" : k)} className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted transition hover:text-ink" title="Nama pegawai DL/cuti">
                     <I.down className={cx("h-4 w-4 transition-transform", on && "rotate-180")} />
                   </button>
@@ -249,7 +276,7 @@ export default function PresensiView() {
                     <label key={field} className="block">
                       <span className="flex items-center justify-between text-[12px] font-semibold text-muted">
                         {label}
-                        {p[field] && hitungJumlahNama(p[field]) !== p[nField] && (
+                        {!terkunciIsi && p[field] && hitungJumlahNama(p[field]) !== p[nField] && (
                           <button
                             type="button"
                             onClick={() => setP(k, { [nField]: hitungJumlahNama(p[field]) } as Partial<Presensi>)}
@@ -262,6 +289,7 @@ export default function PresensiView() {
                       <textarea
                         value={p[field]}
                         onChange={(e) => setP(k, { [field]: e.target.value } as Partial<Presensi>)}
+                        readOnly={terkunciIsi}
                         rows={4}
                         placeholder={"1. Nama pegawai\n2. …"}
                         className="mt-1.5 w-full resize-y rounded-xl border border-line bg-paper px-3 py-2 text-[13px] leading-relaxed outline-none transition focus:border-brand focus:bg-white"
@@ -283,7 +311,7 @@ export default function PresensiView() {
             right={
               <div className="flex items-center gap-2">
                 <Pill>{tabelApl.kolom.length} kolom</Pill>
-                <Btn variant="ghost" size="sm" onClick={() => void tambahBaris()} disabled={sisipSibuk || bacaSaja} title="Sisipkan satu baris baru di tabel ini dan simpan ke sheet">
+                <Btn variant="ghost" size="sm" onClick={() => void tambahBaris()} disabled={sisipSibuk || terkunciIsi} title="Sisipkan satu baris baru di tabel ini dan simpan ke sheet">
                   {sisipSibuk ? <Spinner className="h-4 w-4" /> : <I.plus className="h-4 w-4" />}
                   Tambah baris
                 </Btn>
@@ -337,9 +365,11 @@ export default function PresensiView() {
                             value={nilaiSel(kunci)}
                             onChange={(e) => setSelDraft((d) => ({ ...d, [kunci]: e.target.value }))}
                             placeholder="—"
+                            readOnly={terkunciIsi}
                             className={cx(
                               "w-full min-w-[76px] rounded-lg border bg-white px-2 py-1.5 text-[12px] outline-none focus:border-brand",
                               kotor ? "border-warn bg-warn-soft/40" : "border-line",
+                              terkunciIsi && "cursor-default bg-paper text-muted",
                             )}
                           />
                         </td>
@@ -390,6 +420,7 @@ export default function PresensiView() {
                           inputMode="numeric"
                           value={a[f] ?? ""}
                           onChange={(e) => setA(k, { [f]: num(e.target.value.replace(/\D/g, "")) } as Partial<Aplikasi>)}
+                          readOnly={terkunciIsi}
                           className="h-10 w-full rounded-lg border border-line bg-paper px-3 text-center font-semibold outline-none transition focus:border-brand focus:bg-white"
                         />
                       </td>
@@ -406,7 +437,7 @@ export default function PresensiView() {
       {adaPerubahan && (
         <div className="no-print anim-pop sticky bottom-20 z-20 flex items-center justify-between gap-3 rounded-2xl bg-ink px-4 py-3 text-white shadow-xl lg:bottom-6">
           <span className="text-[13px] font-medium">{changedP.length + changedA.length + changedSel.length} isian presensi diubah</span>
-          <Btn variant="brand" size="sm" onClick={simpan} disabled={bacaSaja}>
+          <Btn variant="brand" size="sm" onClick={simpan} disabled={terkunciIsi}>
             <I.check className="h-4 w-4" /> Simpan
           </Btn>
         </div>
@@ -415,7 +446,19 @@ export default function PresensiView() {
   );
 }
 
-function NumField({ label, value, onChange, strong }: { label: string; value: number | null; onChange: (v: string) => void; strong?: boolean }) {
+function NumField({
+  label,
+  value,
+  onChange,
+  strong,
+  disabled,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (v: string) => void;
+  strong?: boolean;
+  disabled?: boolean;
+}) {
   return (
     <label className="block">
       <span className="text-[11px] font-semibold text-muted">{label}</span>
@@ -423,6 +466,7 @@ function NumField({ label, value, onChange, strong }: { label: string; value: nu
         inputMode="numeric"
         value={value ?? ""}
         placeholder="—"
+        readOnly={disabled}
         onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
         className={cx(
           "mt-1 h-10 w-full rounded-lg border border-line bg-paper px-3 text-center outline-none transition focus:border-brand focus:bg-white",
