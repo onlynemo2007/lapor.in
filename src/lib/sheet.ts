@@ -1144,6 +1144,24 @@ export function bolehSalinKode(admin: boolean, versiSkrip: string, adaPin?: bool
   return !versiSkrip || versiSkrip !== SCRIPT_VERSI;
 }
 
+/**
+ * Melihat / membuka pengaturan koneksi Apps Script (kode skrip, URL, token):
+ * khusus **mode admin** (PIN diverifikasi skrip). Dua pengecualian supaya tidak
+ * ada pengurus yang terkunci di luar:
+ *  - perangkat belum tersambung sama sekali (belum ada skrip untuk memeriksa PIN)
+ *  - skrip melaporkan `PIN_ADMIN` belum disetel (mode admin mustahil dibuka)
+ */
+export function bolehBukaKoneksi(
+  admin: boolean,
+  terpasang: boolean,
+  skripInfo: { adaPin?: boolean } | null,
+): boolean {
+  if (admin) return true;
+  if (!terpasang) return true;
+  if (skripInfo && skripInfo.adaPin === false) return true;
+  return false;
+}
+
 /** Tanyakan ke skrip apakah PIN admin ini benar (PIN tidak pernah disimpan di skrip). */
 export async function cekPin(url: string, pin: string): Promise<{ ok: boolean; adaPin?: boolean; error?: string }> {
   const ctrl = new AbortController();

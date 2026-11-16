@@ -34498,8 +34498,12 @@ function Logo({ className = "" }) {
   ] });
 }
 var cx = (...c) => c.filter(Boolean).join(" ");
-function Card({ className = "", children }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: cx("rounded-2xl border border-line bg-white", className), children });
+function Card({
+  className = "",
+  children,
+  ...sisa
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: cx("rounded-2xl border border-line bg-white", className), ...sisa, children });
 }
 function Btn({ variant = "primary", size = "md", className = "", ...p }) {
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(

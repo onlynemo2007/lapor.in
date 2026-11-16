@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../lib/store";
 import { SPREADSHEET_ID, rentangSetelahGeser, saranNamaMinggu, slotLabel, tanggalPendek, timById } from "../lib/model";
-import { APPS_SCRIPT, SCRIPT_VERSI, blokSalin, bolehSalinKode } from "../lib/sheet";
+import { APPS_SCRIPT, SCRIPT_VERSI, blokSalin, bolehBukaKoneksi } from "../lib/sheet";
 import { jamSinkron, waktuSinkron } from "../lib/sync";
 import { tautanSiapPakai } from "../lib/koneksi";
 import { Btn, Card, I, Pill, Spinner, cx, salin, useToast } from "../components/ui";
@@ -93,11 +93,20 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
   /** Mode admin: PIN sudah diverifikasi skrip di perangkat ini. */
   const admin = !!(settings.pinAdmin ?? "").trim();
   /**
-   * Skrip di sheet belum v2.2 / belum punya PIN_ADMIN → PIN belum bisa diverifikasi,
-   * jadi mode admin belum mungkin dibuka. Dalam masa peralihan itu kode tetap boleh
-   * disalin supaya pengurus bisa memperbarui skrip (setelah itu kembali khusus admin).
+   * Koneksi Apps Script (kode skrip, URL, token) hanya bisa dilihat/dibuka dalam
+   * mode admin (PIN). Pengecualian: perangkat belum tersambung sama sekali, atau
+   * skrip belum punya PIN_ADMIN sehingga mode admin mustahil dibuka.
    */
-  const bolehSalinSkrip = bolehSalinKode(admin, versiSkrip, skripInfo?.adaPin);
+  const bolehKoneksi = bolehBukaKoneksi(admin, !!settings.scriptUrl && !!settings.token, skripInfo);
+  const hanyaAdmin = !bolehKoneksi;
+
+  /** Gulir ke kotak kode (bila admin) atau ke kartu PIN admin (bila masih terkunci). */
+  const keKode = () => {
+    setBukaKode(true);
+    window.setTimeout(() => {
+      document.getElementById(bolehKoneksi ? "kode-skrip" : "mode-admin")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  };
   const tautanSama = !!tautan && tautan.scriptUrl === settings.scriptUrl && tautan.token === settings.token;
   const urlValid = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec/.test(settings.scriptUrl);
   const sheetUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit#gid=${week.gid}`;
@@ -280,7 +289,7 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
       )}
 
       {/* mode admin */}
-      <Card className="p-5">
+      <Card className="p-5" id="mode-admin">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <span className={cx("grid h-11 w-11 shrink-0 place-items-center rounded-2xl", admin ? "bg-ink text-white" : "bg-paper text-muted")}>
@@ -620,15 +629,9 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
                   <Btn
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      setBukaKode(true);
-                      window.setTimeout(
-                        () => document.getElementById("kode-skrip")?.scrollIntoView({ behavior: "smooth", block: "start" }),
-                        80,
-                      );
-                    }}
+                    onClick={keKode}
                   >
-                    Lihat &amp; salin kode
+                    {hanyaAdmin ? "Buka mode admin" : "Lihat & salin kode"}
                   </Btn>
                 </div>
               )}
@@ -647,15 +650,9 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
                       variant="ghost"
                       size="sm"
                       className="shrink-0"
-                      onClick={() => {
-                        setBukaKode(true);
-                        window.setTimeout(
-                          () => document.getElementById("kode-skrip")?.scrollIntoView({ behavior: "smooth", block: "start" }),
-                          80,
-                        );
-                      }}
+                      onClick={keKode}
                     >
-                      Buka kode v{SCRIPT_VERSI}
+                      {hanyaAdmin ? "Buka mode admin" : `Buka kode v${SCRIPT_VERSI}`}
                     </Btn>
                   )}
                 </div>
@@ -695,19 +692,44 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
               {terpasang ? "Koneksi Apps Script" : "Aktifkan sekali: pasang Apps Script"}
             </h2>
             <p className="mt-0.5 max-w-[640px] text-[12.5px] leading-relaxed text-muted">
-              {terpasang
-                ? "Sudah tersambung lewat Web App. Kode skrip terbaru bisa disalin kapan saja di kotak di bawah."
-                : "Aplikasi ini hanya butuh satu kali penyiapan agar bisa menulis ke spreadsheet Anda."}
+              {hanyaAdmin
+                ? "Khusus admin. Buka mode admin dengan PIN untuk melihat kode skrip, URL Web App, dan token."
+                : terpasang
+                  ? "Sudah tersambung lewat Web App. Kode skrip terbaru bisa disalin kapan saja di kotak di bawah."
+                  : "Aplikasi ini hanya butuh satu kali penyiapan agar bisa menulis ke spreadsheet Anda."}
             </p>
           </div>
-          {terpasang && (
+          {terpasang && bolehKoneksi && (
             <Btn variant="ghost" size="sm" onClick={() => setBukaKoneksi((v) => !v)}>
               {bukaKoneksi ? "Tutup" : "Ubah koneksi"}
             </Btn>
           )}
+          {hanyaAdmin && (
+            <span className="flex items-center gap-1.5 rounded-full bg-paper px-3 py-1.5 text-[11.5px] font-bold text-muted">
+              <I.lock className="h-3.5 w-3.5" /> Perlu PIN admin
+            </span>
+          )}
         </div>
 
-        {/* Kode skrip: selalu terlihat supaya mudah disalin/diperbarui */}
+        {/* Kode skrip: hanya untuk admin (berisi token asli) */}
+        {hanyaAdmin ? (
+          <div id="kode-skrip" className="mt-4 scroll-mt-24 rounded-xl border border-dashed border-[#d6d5cf] bg-paper p-4">
+            <p className="text-[12.5px] font-semibold">Kode skrip &amp; pengaturan koneksi terkunci</p>
+            <p className="mt-1 max-w-[560px] text-[12px] leading-relaxed text-muted">
+              Kotak <b>Kode.gs</b>, tombol <b>Salin kode</b>, dan kolom URL/token hanya terbuka setelah{" "}
+              <b>mode admin</b> aktif (PIN diperiksa langsung oleh Apps Script). Ini mencegah kode/token tersalin oleh
+              perangkat yang bukan pengurus.
+            </p>
+            <Btn
+              variant="soft"
+              size="sm"
+              className="mt-3"
+              onClick={() => document.getElementById("mode-admin")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            >
+              <I.lock className="h-3.5 w-3.5" /> Buka mode admin (PIN)
+            </Btn>
+          </div>
+        ) : (
         <div id="kode-skrip" className="mt-4 scroll-mt-24 overflow-hidden rounded-xl border border-line">
           <div className="flex flex-wrap items-center gap-2 border-b border-line bg-paper px-3 py-2">
             <span className="font-mono text-[11.5px] text-muted">
@@ -718,8 +740,8 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
               <Btn variant="ghost" size="sm" onClick={() => setBukaKode((v) => !v)}>
                 {bukaKode ? "Sembunyikan" : "Lihat kode"}
               </Btn>
-              {/* Kode disalin memuat token asli → khusus admin, kecuali masa peralihan ke v2.2. */}
-              {bolehSalinSkrip && (
+              {/* Kode disalin memuat token asli → khusus admin. */}
+              {bolehKoneksi && (
                 <Btn
                   variant={copied === "script" ? "brand" : "primary"}
                   size="sm"
@@ -754,7 +776,7 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
               tidak bisa dibuka dan pengaturan koneksi tetap terkunci.
             </p>
             {settings.token && <p>Kode yang disalin sudah berisi token Anda.</p>}
-            {!admin && bolehSalinSkrip && (
+            {!admin && bolehKoneksi && (
               <p>
                 Salin kode dibuka sementara karena skrip di spreadsheet belum v{SCRIPT_VERSI}. Setelah skrip diperbarui dan{" "}
                 <code className="rounded bg-paper px-1 font-mono">PIN_ADMIN</code> diisi, tombol ini kembali khusus mode admin.
@@ -762,8 +784,9 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
             )}
           </div>
         </div>
+        )}
 
-        {(!terpasang || bukaKoneksi) && (
+        {(!terpasang || (bolehKoneksi && bukaKoneksi)) && (
           <div className="mt-4 grid gap-5 lg:grid-cols-2">
             <div>
               <ol className="space-y-2.5 text-[12.5px] leading-relaxed text-muted">

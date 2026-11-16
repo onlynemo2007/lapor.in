@@ -68,8 +68,16 @@ export function Logo({ className = "" }: { className?: string }) {
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
 
-export function Card({ className = "", children }: { className?: string; children: ReactNode }) {
-  return <div className={cx("rounded-2xl border border-line bg-white", className)}>{children}</div>;
+export function Card({
+  className = "",
+  children,
+  ...sisa
+}: { className?: string; children: ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div className={cx("rounded-2xl border border-line bg-white", className)} {...sisa}>
+      {children}
+    </div>
+  );
 }
 
 type BtnProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {

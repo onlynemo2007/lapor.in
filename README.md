@@ -70,7 +70,8 @@ aplikasi menampilkan peringatan: salin ulang kode dari menu Sinkronisasi, lalu
 ## Penyiapan sekali saja
 
 1. Buka spreadsheet → **Ekstensi → Apps Script**, tempel kode dari menu **Sinkronisasi → Salin kode**
-   (ubah `TOKEN` di dalam kode menjadi kode rahasia Anda).
+   (ubah `TOKEN` di dalam kode menjadi kode rahasia Anda). Tombol ini terbuka saat koneksi belum
+   tersambung; setelah tersambung, kartu Koneksi hanya bisa dibuka lewat **mode admin (PIN)**.
 2. **Terapkan → Deployment baru → Aplikasi web**, jalankan sebagai **Saya**, akses **Siapa saja**.
 3. Tempel URL yang berakhiran `/exec` + token yang sama di menu **Sinkronisasi**.
 4. Aktifkan **Kirim otomatis** (default aktif). Untuk rekan setim: bagikan **tautan siap pakai** dari halaman
@@ -132,7 +133,7 @@ otomatis terkunci. Skrip **v2.4** membaca judul minggu dari **12 baris teratas**
 cadangan bila judul tidak terbaca. Versi lama hanya membaca 3 baris pertama, sehingga pada kop surat dua
 baris judul minggu tidak terbaca dan minggu baru bisa salah dianggap sudah ditutup — gejalanya: peringatan
 "minggu sudah lewat" saat mengisi laporan, dan kiriman ditolak skrip. Perbarui skrip ke v2.4 lewat menu
-**Sinkronisasi → Salin kode → Terapkan → Kelola deployment → Edit → Versi baru**.
+**Sinkronisasi → (mode admin) Salin kode → Terapkan → Kelola deployment → Edit → Versi baru**.
 
 ## Halaman pilih saat alamat utama dibuka
 
@@ -203,7 +204,7 @@ jadi tidak bisa dilewati dari tampilan:
 |---|---|
 | **Minggu lama terkunci** | Hanya tab minggu **terbaru** yang bisa ditulisi. Urutan ditentukan dari **judul** tab (`LAPORAN MINGGU KE- III BULAN NOVEMBER 2026`) yang dibaca dari 12 baris teratas — kop surat memakai dua baris pertama, jadi judul biasanya di baris 5 — bukan dari posisi tab. Bila judul tak terbaca, **nama tab** (`Nov III`, `Agust IV`) dipakai sebagai cadangan, dan tab paling kiri jadi pilihan terakhir. Saat dashboard atau menu Isi Laporan dibuka, aplikasi **otomatis memindahkan tab ke minggu terbaru** dan mengunci pilihan minggu lama (baca-saja). Minggu lama tetap **bisa dibuka untuk dilihat** (isian, presensi, keuangan, dan pratinjau tetap terbaca), tetapi **tidak bisa diedit**: kotak isian diganti tampilan baca-saja, tombol simpan dinonaktifkan, asisten chat tidak dijalankan, dan isian tertunda untuk tab itu tidak dikirim ke sheet. Untuk mengedit, **admin memasukkan PIN** (tombol **Kunci minggu** di kanan atas, atau Sinkronisasi → Mode admin) atau kuncinya dibuka di skrip. |
 | **Nama pengisi wajib** | Kiriman tanpa nama (≥ 2 huruf) ditolak; nama masuk ke tab `_audit`. |
-| **Aksi berisiko = admin** | `buatTab`, buka/kunci minggu, dan "kirim ulang seluruh isian" butuh **PIN admin** yang disetel di Script Properties (`PIN_ADMIN`), bukan di kode. |
+| **Aksi berisiko = admin** | `buatTab`, buka/kunci minggu, "kirim ulang seluruh isian", serta **melihat/membuka Koneksi Apps Script** (kode skrip, URL, token) butuh **PIN admin** yang disetel di Script Properties (`PIN_ADMIN`), bukan di kode. |
 | **Batas kiriman** | Maksimal 400 sel per kiriman, 60 kiriman / 5 menit, 5 baris baru per kiriman. |
 | **Anti-timpa** | Aplikasi mengirim teks sel saat terakhir dibaca; bila isi sheet sudah diubah rekan, skrip **menolak menimpa**, aplikasi memberi tahu dan memuat ulang dari sheet. |
 
@@ -211,9 +212,10 @@ Penyiapan setelah memperbarui ke v2.2 (urutan ini penting — PIN diverifikasi o
 
 1. **Sinkronisasi → Koneksi → Salin kode**, tempel di Apps Script, lalu
    **Terapkan → Kelola deployment → Edit → Versi baru** (URL `/exec` tidak berubah).
-   Selama skrip di sheet belum v2.2 (atau `PIN_ADMIN` belum diisi), tombol *Salin kode* sengaja
-   tetap terbuka untuk semua pengguna supaya pengurus tidak terkunci di luar; setelah itu tombol
-   kembali khusus mode admin.
+   Kartu **Koneksi Apps Script** (kode skrip, tombol *Lihat kode* / *Salin kode*, kolom URL & token)
+   hanya bisa dibuka dalam **mode admin** (PIN). Pengecualian agar pengurus tidak terkunci di luar:
+   perangkat yang **belum tersambung sama sekali** boleh menyiapkan koneksi, dan bila skrip
+   melaporkan `PIN_ADMIN` **belum disetel** tombol salin kode tetap terbuka sampai PIN diisi.
 2. Di Apps Script: **Project Settings (ikon gear) → Script Properties → Add**:
    - `PIN_ADMIN` = kode rahasia admin (wajib; tanpa ini mode admin tidak bisa dibuka)
    - `MINGGU_BUKA` = daftar gid yang dibuka kembali, dipisah koma (dibuat otomatis oleh tombol admin)
