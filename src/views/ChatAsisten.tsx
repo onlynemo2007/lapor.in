@@ -440,13 +440,13 @@ export default function ChatAsisten() {
       </div>
 
       {chips.length > 0 && (
-        <div className="no-scrollbar flex gap-2 overflow-x-auto border-t border-line px-4 py-3">
+        <div className="flex flex-wrap gap-1.5 border-t border-line px-4 py-3" data-pemilih-tim>
           {chips.map((ch) => (
             <button
               key={ch.label}
               onClick={ch.onPick}
               className={cx(
-                "anim-pop shrink-0 rounded-full border px-3.5 py-2 text-[13px] font-semibold transition active:scale-95",
+                "anim-pop max-w-full rounded-full border px-3 py-1.5 text-left text-[12.5px] font-semibold leading-tight transition active:scale-95",
                 ch.primary ? "border-brand bg-brand text-white hover:bg-[#0c8a5f]" : "border-line bg-white text-ink hover:border-[#cfcec8] hover:bg-paper",
               )}
             >

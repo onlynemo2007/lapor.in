@@ -6,6 +6,10 @@ import { TIMS, slotAda } from "../src/lib/model";
 import { parseWeek } from "../src/lib/sheet";
 import DashboardView from "../src/views/DashboardView";
 import IsiView from "../src/views/IsiView";
+import ChatAsisten from "../src/views/ChatAsisten";
+
+// jsdom belum punya scrollTo pada elemen (dipakai panel chat)
+if (globalThis.HTMLElement) (globalThis.HTMLElement.prototype as unknown as { scrollTo: () => void }).scrollTo = () => {};
 
 const TANGGAL = ["16 November 2026", "17 November 2026", "18 November 2026", "19 November 2026", "20 November 2026"];
 
@@ -164,6 +168,60 @@ async function main() {
   });
   cek("rencana: tim lama bisa diisi", teks().includes("Keuangan"));
   cek("rencana: tiga tim baru ditandai belum ada di sheet", (teks().match(/belum ada di sheet/g) ?? []).length >= 3, String((teks().match(/belum ada di sheet/g) ?? []).length));
+
+  /* ---------------- pemilih tim tidak melebihi layar ---------------- */
+  document.body.innerHTML = "";
+  const wadah3 = document.createElement("div");
+  document.body.appendChild(wadah3);
+  const root3 = createRoot(wadah3);
+  await act(async () => {
+    root3.render(
+      <ToastProvider>
+        <AppProvider>
+          <IsiView params={new URLSearchParams("")} />
+        </AppProvider>
+      </ToastProvider>,
+    );
+  });
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 80));
+  });
+
+  const pemilih = document.querySelector("[data-pemilih-tim]") as HTMLElement | null;
+  const kelas = pemilih?.className ?? "";
+  cek("form cepat: pemilih tim dibungkus (flex-wrap)", /flex-wrap/.test(kelas), kelas);
+  cek("form cepat: tidak perlu digeser (tanpa overflow-x)", !/overflow-x-auto/.test(kelas), kelas);
+  const chipTim = pemilih ? Array.from(pemilih.querySelectorAll("button")) : [];
+  cek("form cepat: 10 tim tampil semua", chipTim.length === 10, String(chipTim.length));
+  cek(
+    "form cepat: chip tidak dikunci selebar layar",
+    chipTim.length > 0 && chipTim.every((b) => !/shrink-0 rounded-full border px-3\.5 py-2 text-\[13px\]/.test(b.className)),
+  );
+  cek("form cepat: nama tim panjang utuh", (pemilih?.textContent ?? "").includes("Sertifikasi Kompetensi SDMKP"));
+
+  document.body.innerHTML = "";
+  const wadah4 = document.createElement("div");
+  document.body.appendChild(wadah4);
+  const root4 = createRoot(wadah4);
+  await act(async () => {
+    root4.render(
+      <ToastProvider>
+        <AppProvider>
+          <ChatAsisten />
+        </AppProvider>
+      </ToastProvider>,
+    );
+  });
+  // beri waktu animasi "mengetik" selesai supaya chip pilihan tim muncul
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 2000));
+  });
+  const pemilihChat = document.querySelector("[data-pemilih-tim]") as HTMLElement | null;
+  const kelasChat = pemilihChat?.className ?? "";
+  cek("asisten chat: pemilih tim dibungkus (flex-wrap)", /flex-wrap/.test(kelasChat), kelasChat);
+  cek("asisten chat: tidak perlu digeser (tanpa overflow-x)", !/overflow-x-auto/.test(kelasChat), kelasChat);
+  const chipChat = pemilihChat ? Array.from(pemilihChat.querySelectorAll("button")) : [];
+  cek("asisten chat: 10 tim tampil semua", chipChat.length === 10, String(chipChat.length));
 
   const lulus = hasil.filter((h) => h.lulus).length;
   for (const h of hasil) console.log(`${h.lulus ? "✓" : "✗"} ${h.nama}${h.info ? ` — ${h.info}` : ""}`);

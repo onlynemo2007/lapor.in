@@ -195,7 +195,8 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
       <Card className="p-5 sm:p-6">
         {/* tim */}
         <p className="text-[12px] font-semibold uppercase tracking-wider text-muted">Tim</p>
-        <div className="no-scrollbar -mx-1 mt-2 flex gap-1.5 overflow-x-auto px-1 pb-1">
+        {/* chips dibungkus (wrap) — 10 tim tetap terlihat tanpa menggeser layar */}
+        <div className="mt-2 flex flex-wrap gap-1.5" data-pemilih-tim>
           {TIMS.map((t) => {
             const on = t.id === slot.tim;
             return (
@@ -207,12 +208,12 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
                   pindah({ tim: t.id, sub, d });
                 }}
                 className={cx(
-                  "flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-[13px] font-semibold transition",
+                  "flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-left text-[12.5px] font-semibold leading-tight transition",
                   on ? "border-ink bg-ink text-white" : "border-line bg-white text-muted hover:border-[#cfcec8] hover:text-ink",
                 )}
               >
-                <span className="h-2 w-2 rounded-full" style={{ background: t.tone }} />
-                {t.label}
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: t.tone }} />
+                <span className="min-w-0">{t.label}</span>
               </button>
             );
           })}

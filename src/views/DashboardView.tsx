@@ -334,11 +334,21 @@ export default function DashboardView() {
             {TIMS.map((t) => {
               const s = r.perTim[t.id];
               const p = s && s.total ? (s.terisi / s.total) * 100 : 0;
+              // tim yang belum punya baris di tab ini: jangan tampilkan 0% (bukan berarti kosong)
+              const belumAda = !s || !s.total;
               return (
                 <div key={t.id} className="flex items-center gap-3">
-                  <span className="w-[112px] truncate text-[12px] font-medium text-muted">{t.label}</span>
-                  <Progress value={p} tone={t.tone} />
-                  <span className="w-9 text-right text-[11.5px] font-bold">{Math.round(p)}%</span>
+                  <span className="w-[132px] truncate text-[12px] font-medium text-muted" title={t.label}>
+                    {t.label}
+                  </span>
+                  {belumAda ? (
+                    <span className="w-full text-[11px] text-[#b9b8b2]" title={`Baris ${t.label} belum ada di tab ${week.tab}`}>
+                      belum ada di sheet
+                    </span>
+                  ) : (
+                    <Progress value={p} tone={t.tone} />
+                  )}
+                  <span className="w-9 shrink-0 text-right text-[11.5px] font-bold">{belumAda ? "—" : `${Math.round(p)}%`}</span>
                 </div>
               );
             })}
