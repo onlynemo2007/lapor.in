@@ -85,6 +85,14 @@ async function main() {
   cek("kotak peta menampilkan jumlah butir tim sendiri", kotakTerisi.length >= 1, String(kotakTerisi.length));
   const selTerkunci = Array.from(document.querySelectorAll("button")).filter((b) => (b as HTMLButtonElement).disabled);
   cek("sel tim lain terkunci di peta isian", selTerkunci.length > 0, String(selTerkunci.length));
+  /* sorotan baris tim sendiri di peta isian */
+  const barisSaya = Array.from(document.querySelectorAll("[data-tim-saya='1']")) as HTMLElement[];
+  cek("peta isian: baris tim sendiri disorot", barisSaya.length === 1, String(barisSaya.length));
+  cek("peta isian: baris disorot berisi tim utama", /Humas Datin/.test(barisSaya[0]?.textContent ?? ""), barisSaya[0]?.textContent ?? "");
+  cek("peta isian: baris disorot punya pita warna", /bg-brand-soft/.test(barisSaya[0]?.className ?? ""), barisSaya[0]?.className ?? "");
+  cek("peta isian: penjelasan baris tim Anda", /Baris tim Anda \(Humas Datin\) disorot/i.test(teks()), teks().slice(0, 400));
+  cek("peta isian: legenda baris Anda", /baris Anda/i.test(teks()), "");
+
   cek("baris tak terbaca dilaporkan", /belum bisa dipetakan/.test(teks()), teks().slice(-300));
   cek("tim yang dikenal tetap n/a", /n\/a/.test(teks()), "");
   cek("rincian pembacaan sheet tersedia", /Rincian pembacaan sheet/.test(teks()), "");

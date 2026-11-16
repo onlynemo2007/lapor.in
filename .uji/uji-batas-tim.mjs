@@ -38930,8 +38930,12 @@ function DashboardView() {
         SectionTitle,
         {
           title: "Peta isian kegiatan",
-          sub: "Klik kotak untuk mengisi atau mengubah. Angka = jumlah butir kegiatan.",
+          sub: timSendiri ? `Klik kotak untuk mengisi atau mengubah. Baris tim Anda (${timSendiri.label}) disorot \u2014 angka = jumlah butir kegiatan.` : "Klik kotak untuk mengisi atau mengubah. Angka = jumlah butir kegiatan.",
           right: /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "flex items-center gap-3 text-[11.5px] text-muted", children: [
+            timSendiri && /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("span", { className: "flex items-center gap-1.5 font-semibold text-brand", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "h-3 w-3 rounded bg-brand-soft ring-1 ring-brand/40" }),
+              " baris Anda"
+            ] }),
             /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("span", { className: "flex items-center gap-1.5", children: [
               /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "h-3 w-3 rounded border border-dashed border-[#cfcec8]" }),
               " kosong"
@@ -38960,48 +38964,56 @@ function DashboardView() {
           /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("tbody", { children: SLOT_ROWS.map(({ tim, sub }) => {
             const mine = tim.id === settings.timUtama;
             const terisi = week.dates.filter((d) => (week.kegiatan[slotKey(tim.id, sub, d)] ?? []).length).length;
-            return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("tr", { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("td", { className: "pr-2", children: /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "flex items-center gap-2", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "h-2.5 w-2.5 shrink-0 rounded-full", style: { background: tim.tone } }),
-                /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("span", { className: cx("truncate text-[13px]", mine ? "font-bold" : "font-medium"), children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "mr-1 text-[11px] text-muted", children: tim.no }),
-                  tim.label,
-                  sub && /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("span", { className: "text-muted", children: [
-                    " \xB7 ",
-                    sub
+            return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
+              "tr",
+              {
+                "data-tim-saya": mine ? "1" : void 0,
+                className: cx(mine && "bg-brand-soft/70 [&>td]:rounded-lg"),
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("td", { className: cx("pr-2", mine && "border-l-[3px] border-brand pl-2"), children: /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "flex items-center gap-2", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "h-2.5 w-2.5 shrink-0 rounded-full", style: { background: tim.tone } }),
+                    /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("span", { className: cx("truncate text-[13px]", mine ? "font-bold" : "font-medium"), children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "mr-1 text-[11px] text-muted", children: tim.no }),
+                      tim.label,
+                      sub && /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("span", { className: "text-muted", children: [
+                        " \xB7 ",
+                        sub
+                      ] })
+                    ] }),
+                    mine && /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Pill, { tone: "brand", className: "!px-1.5 !py-0.5 !text-[9.5px]", children: "tim Anda" })
+                  ] }) }),
+                  week.dates.map((d) => {
+                    const k = slotKey(tim.id, sub, d);
+                    const n = (week.kegiatan[k] ?? []).length;
+                    const dirty = !!week.dirty[`A:${k}`];
+                    if (!slotAda(week, tim.id, sub, d))
+                      return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "grid h-11 place-items-center rounded-lg bg-[#f3f2ee] text-[10.5px] font-medium text-[#b9b8b2]", title: `Baris ${tim.label} belum ada di tab ${week.tab} \u2014 tambahkan di sheet lalu muat ulang`, children: "n/a" }) }, d);
+                    return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+                      "button",
+                      {
+                        onClick: () => go("isi", { tim: tim.id, sub, d }),
+                        disabled: !bolehIsi(tim.id),
+                        title: bolehIsi(tim.id) ? `${slotLabel(tim.id, sub)} \xB7 ${d}${n ? ` \xB7 ${n} butir` : " \xB7 kosong"}` : `${slotLabel(tim.id, sub)} \u2014 hanya tim ${timSendiri?.label} yang bisa Anda isi`,
+                        className: cx(
+                          "group grid h-11 w-full place-items-center rounded-lg text-[13px] font-bold transition-all hover:scale-[1.04]",
+                          n ? "text-ink" : mine ? "border border-dashed border-brand/60 bg-white text-brand hover:border-brand hover:bg-brand-soft" : "border border-dashed border-[#d6d5cf] text-[#b9b8b2] hover:border-brand hover:text-brand",
+                          dirty && "ring-2 ring-warn ring-offset-1",
+                          !bolehIsi(tim.id) && "cursor-not-allowed opacity-45 hover:scale-100"
+                        ),
+                        style: n ? { background: `color-mix(in srgb, ${tim.tone} ${Math.min(18 + n * 14, 70)}%, white)` } : void 0,
+                        children: !bolehIsi(tim.id) ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(I.lock, { className: "h-3.5 w-3.5" }) : n ? n : /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(I.plus, { className: "h-4 w-4" })
+                      }
+                    ) }, d);
+                  }),
+                  /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("td", { className: cx("text-right text-[12px] font-semibold", mine ? "text-brand" : "text-muted"), children: [
+                    terisi,
+                    "/",
+                    week.dates.length
                   ] })
-                ] }),
-                mine && /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(Pill, { tone: "brand", className: "!px-1.5 !py-0.5 !text-[9.5px]", children: "tim Anda" })
-              ] }) }),
-              week.dates.map((d) => {
-                const k = slotKey(tim.id, sub, d);
-                const n = (week.kegiatan[k] ?? []).length;
-                const dirty = !!week.dirty[`A:${k}`];
-                if (!slotAda(week, tim.id, sub, d))
-                  return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "grid h-11 place-items-center rounded-lg bg-[#f3f2ee] text-[10.5px] font-medium text-[#b9b8b2]", title: `Baris ${tim.label} belum ada di tab ${week.tab} \u2014 tambahkan di sheet lalu muat ulang`, children: "n/a" }) }, d);
-                return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("td", { children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-                  "button",
-                  {
-                    onClick: () => go("isi", { tim: tim.id, sub, d }),
-                    disabled: !bolehIsi(tim.id),
-                    title: bolehIsi(tim.id) ? `${slotLabel(tim.id, sub)} \xB7 ${d}${n ? ` \xB7 ${n} butir` : " \xB7 kosong"}` : `${slotLabel(tim.id, sub)} \u2014 hanya tim ${timSendiri?.label} yang bisa Anda isi`,
-                    className: cx(
-                      "group grid h-11 w-full place-items-center rounded-lg text-[13px] font-bold transition-all hover:scale-[1.04]",
-                      n ? "text-ink" : "border border-dashed border-[#d6d5cf] text-[#b9b8b2] hover:border-brand hover:text-brand",
-                      dirty && "ring-2 ring-warn ring-offset-1",
-                      !bolehIsi(tim.id) && "cursor-not-allowed opacity-45 hover:scale-100"
-                    ),
-                    style: n ? { background: `color-mix(in srgb, ${tim.tone} ${Math.min(18 + n * 14, 70)}%, white)` } : void 0,
-                    children: !bolehIsi(tim.id) ? /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(I.lock, { className: "h-3.5 w-3.5" }) : n ? n : /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(I.plus, { className: "h-4 w-4" })
-                  }
-                ) }, d);
-              }),
-              /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("td", { className: "text-right text-[12px] font-semibold text-muted", children: [
-                terisi,
-                "/",
-                week.dates.length
-              ] })
-            ] }, tim.id + sub);
+                ]
+              },
+              tim.id + sub
+            );
           }) })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("details", { className: "mt-3 rounded-lg border border-line px-3 py-2", children: [

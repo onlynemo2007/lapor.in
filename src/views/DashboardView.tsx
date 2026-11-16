@@ -149,9 +149,18 @@ export default function DashboardView() {
       <Card className="p-5">
         <SectionTitle
           title="Peta isian kegiatan"
-          sub="Klik kotak untuk mengisi atau mengubah. Angka = jumlah butir kegiatan."
+          sub={
+            timSendiri
+              ? `Klik kotak untuk mengisi atau mengubah. Baris tim Anda (${timSendiri.label}) disorot — angka = jumlah butir kegiatan.`
+              : "Klik kotak untuk mengisi atau mengubah. Angka = jumlah butir kegiatan."
+          }
           right={
             <div className="flex items-center gap-3 text-[11.5px] text-muted">
+              {timSendiri && (
+                <span className="flex items-center gap-1.5 font-semibold text-brand">
+                  <span className="h-3 w-3 rounded bg-brand-soft ring-1 ring-brand/40" /> baris Anda
+                </span>
+              )}
               <span className="flex items-center gap-1.5">
                 <span className="h-3 w-3 rounded border border-dashed border-[#cfcec8]" /> kosong
               </span>
@@ -183,8 +192,12 @@ export default function DashboardView() {
                 const mine = tim.id === settings.timUtama;
                 const terisi = week.dates.filter((d) => (week.kegiatan[slotKey(tim.id, sub, d)] ?? []).length).length;
                 return (
-                  <tr key={tim.id + sub}>
-                    <td className="pr-2">
+                  <tr
+                    key={tim.id + sub}
+                    data-tim-saya={mine ? "1" : undefined}
+                    className={cx(mine && "bg-brand-soft/70 [&>td]:rounded-lg")}
+                  >
+                    <td className={cx("pr-2", mine && "border-l-[3px] border-brand pl-2")}>
                       <div className="flex items-center gap-2">
                         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: tim.tone }} />
                         <span className={cx("truncate text-[13px]", mine ? "font-bold" : "font-medium")}>
@@ -219,7 +232,11 @@ export default function DashboardView() {
                             }
                             className={cx(
                               "group grid h-11 w-full place-items-center rounded-lg text-[13px] font-bold transition-all hover:scale-[1.04]",
-                              n ? "text-ink" : "border border-dashed border-[#d6d5cf] text-[#b9b8b2] hover:border-brand hover:text-brand",
+                              n
+                                ? "text-ink"
+                                : mine
+                                  ? "border border-dashed border-brand/60 bg-white text-brand hover:border-brand hover:bg-brand-soft"
+                                  : "border border-dashed border-[#d6d5cf] text-[#b9b8b2] hover:border-brand hover:text-brand",
                               dirty && "ring-2 ring-warn ring-offset-1",
                               !bolehIsi(tim.id) && "cursor-not-allowed opacity-45 hover:scale-100",
                             )}
@@ -230,7 +247,7 @@ export default function DashboardView() {
                         </td>
                       );
                     })}
-                    <td className="text-right text-[12px] font-semibold text-muted">
+                    <td className={cx("text-right text-[12px] font-semibold", mine ? "text-brand" : "text-muted")}>
                       {terisi}/{week.dates.length}
                     </td>
                   </tr>
