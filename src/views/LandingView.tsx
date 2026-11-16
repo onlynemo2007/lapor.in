@@ -45,12 +45,6 @@ export default function LandingView() {
             <p className="text-[15px] font-extrabold leading-none tracking-tight">Lapor.in</p>
             <p className="mt-1 text-[11px] text-muted">Tim Dukman · PSSSDMKP</p>
           </div>
-          <a
-            href="#/dashboard"
-            className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-2 text-[12.5px] font-semibold text-ink transition hover:border-[#d3d2cc] hover:bg-white"
-          >
-            <I.home className="h-4 w-4" /> Dashboard
-          </a>
         </div>
       </header>
 

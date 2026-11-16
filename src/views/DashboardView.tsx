@@ -192,7 +192,7 @@ export default function DashboardView() {
                       if (!slotAda(week, tim.id, sub, d))
                         return (
                           <td key={d}>
-                            <div className="grid h-11 place-items-center rounded-lg bg-[#f3f2ee] text-[10.5px] font-medium text-[#b9b8b2]" title="Baris ini tidak ada di tab ini">
+                            <div className="grid h-11 place-items-center rounded-lg bg-[#f3f2ee] text-[10.5px] font-medium text-[#b9b8b2]" title={`Baris ${tim.label} belum ada di tab ${week.tab} — tambahkan di sheet lalu muat ulang`}>
                               n/a
                             </div>
                           </td>

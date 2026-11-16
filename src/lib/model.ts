@@ -43,7 +43,17 @@ export const DEFAULT_TABS: Tab[] = [
   { name: "April  II", gid: "0" },
 ];
 
-export type TimId = "keuangan" | "umum" | "arsiparis" | "kepegawaian" | "program" | "humas" | "hukum";
+export type TimId =
+  | "keuangan"
+  | "umum"
+  | "arsiparis"
+  | "kepegawaian"
+  | "program"
+  | "humas"
+  | "hukum"
+  | "sertifikasi"
+  | "standardisasi"
+  | "mutu";
 
 export type Tim = { id: TimId; no: string; label: string; subs: string[]; tone: string };
 
@@ -55,6 +65,11 @@ export const TIMS: Tim[] = [
   { id: "program", no: "V", label: "Program dan Monev", subs: ["Program", "Monev"], tone: "#8b7cf6" },
   { id: "humas", no: "VI", label: "Humas Datin", subs: [""], tone: "#0ea5b7" },
   { id: "hukum", no: "VII", label: "Hukum", subs: [""], tone: "#c2410c" },
+  // Tim tambahan (VIII–X). Baris di sheet harus ada lebih dulu; kalau belum ada,
+  // aplikasi menandai selnya "n/a" dan tidak mengirim isian untuk tim itu.
+  { id: "sertifikasi", no: "VIII", label: "Sertifikasi Kompetensi SDMKP", subs: [""], tone: "#2f5bd7" },
+  { id: "standardisasi", no: "IX", label: "Standardisasi Kompetensi", subs: [""], tone: "#0f766e" },
+  { id: "mutu", no: "X", label: "Penjamin Mutu LSP", subs: [""], tone: "#9d174d" },
 ];
 
 export const timById = (id: string) => TIMS.find((t) => t.id === id);

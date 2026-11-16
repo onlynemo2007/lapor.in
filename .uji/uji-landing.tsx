@@ -79,7 +79,9 @@ async function main() {
   cek("alamat formulir WFH ditampilkan pendek", teks().includes("script.google.com/…/AKfycbw2…/exec"));
   cek("tautan langsung #/isi disebut", teks().includes("#/isi"));
   cek("tidak ada lagi janji halaman #/wfh", !teks().includes("#/wfh"));
-  cek("ada jalan ke dashboard", !!Array.from(document.querySelectorAll("a")).find((a) => a.getAttribute("href") === "#/dashboard"));
+  const keDashboard = Array.from(document.querySelectorAll("a")).filter((a) => a.getAttribute("href") === "#/dashboard");
+  cek("tombol Dashboard di kanan atas sudah dihapus", keDashboard.length === 1 && (keDashboard[0].closest("header") === null), `${keDashboard.length} tautan`);
+  cek("jalan ke dashboard tetap ada di footer", /Masuk ke dashboard/.test(teks()));
   cek("halaman pilih tanpa sidebar/bilah menu", !teks().includes("Realisasi Keuangan") && !teks().includes("Pratinjau & Cetak"));
 
   /* ---------------- dashboard tanpa kartu WFH ---------------- */

@@ -581,6 +581,8 @@ function FormRencana({ week }: { week: WeekData }) {
         const items = itemsOf(t.id);
         const on = buka === t.id;
         const changed = draft[t.id] !== undefined;
+        // tim baru mungkin belum punya baris di bagian B tab ini
+        const adaBaris = !!week.rows.B[t.id];
         return (
           <Card key={t.id} className={cx("overflow-hidden transition", on && "border-[#d3d2cc] shadow-sm")}>
             <button onClick={() => setBuka(on ? "" : t.id)} className="flex w-full items-center gap-3 px-5 py-4 text-left">
@@ -590,12 +592,26 @@ function FormRencana({ week }: { week: WeekData }) {
                 {t.label}
               </span>
               {week.dirty[`B:${t.id}`] && <Pill tone="warn">menunggu sinkron</Pill>}
+              {!adaBaris && (
+                <Pill tone="warn" title={`Baris ${t.label} belum ada di bagian B tab ${week.tab}`}>
+                  belum ada di sheet
+                </Pill>
+              )}
               <span className={cx("ml-auto text-[12px] font-semibold", items.length ? "text-brand" : "text-[#b9b8b2]")}>
                 {items.length ? `${items.length} rencana` : "kosong"}
               </span>
               <I.down className={cx("h-4 w-4 text-muted transition-transform", on && "rotate-180")} />
             </button>
-            {on && (
+            {on && !adaBaris && (
+              <div className="anim-fade border-t border-line px-5 pb-5 pt-4">
+                <div className="flex items-start gap-2.5 rounded-xl bg-warn-soft p-3 text-[12.5px] text-warn">
+                  <I.alert className="mt-0.5 h-4 w-4 shrink-0" />
+                  Baris {t.label} belum ada di bagian B tab {week.tab}, jadi rencana tim ini tidak bisa dikirim ke
+                  sheet. Tambahkan barisnya di sheet lalu muat ulang.
+                </div>
+              </div>
+            )}
+            {on && adaBaris && (
               <div className="anim-fade border-t border-line px-5 pb-5 pt-4">
                 <ItemsEditor
                   items={items}

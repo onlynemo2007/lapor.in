@@ -138,7 +138,29 @@ baru). Alamat aplikasi ini:
 
 Logikanya di `src/lib/rute.ts` (`ruteDariHash`, `VIEW_AWAL`); halaman pilih ada di `src/views/LandingView.tsx`
 dan dirender di luar `Shell` (`src/App.tsx`). Hash tak dikenal juga diarahkan ke halaman pilih, bukan halaman kosong.
+Halaman pilih tidak punya tombol Dashboard di kanan atas — jalan ke dashboard ada di tautan kaki halaman.
 Logo di sidebar, logo di bilah atas HP, dan tautan **Halaman pilih** di kaki sidebar membawa kembali ke `/`.
+
+## Tim dalam laporan mingguan
+
+Daftar tim ada di `TIMS` (`src/lib/model.ts`) dan **mengikuti penomoran di sheet**:
+
+| No | Tim |
+| --- | --- |
+| I–VII | Keuangan, Umum, Arsiparis, Kepegawaian, Program dan Monev, Humas Datin, Hukum |
+| VIII | Sertifikasi Kompetensi SDMKP |
+| IX | Standardisasi Kompetensi |
+| X | Penjamin Mutu LSP |
+
+Tiga tim terakhir (`sertifikasi`, `standardisasi`, `mutu`) tampil di dashboard, isian, rencana, dan pratinjau
+sejak v2.4 aplikasi, **tetapi tulisan ke sheet butuh barisnya ada lebih dulu**:
+
+- tab yang belum punya baris tim itu → sel dashboard bertanda **n/a** (dengan keterangan "belum ada di tab"),
+  dan form rencana menampilkan "belum ada di sheet" (isian tidak dikirim, jadi tidak ada kiriman gagal);
+- begitu baris `VIII. Sertifikasi Kompetensi SDMKP` dan seterusnya ditambahkan di bagian A (5 baris tanggal) dan
+  bagian B (1 baris rencana) — di tab mana pun — aplikasi langsung mengenalinya tanpa perubahan kode.
+- Nama tim di sheet dikenali dari kata kuncinya (`sertifikasi`, `standardisasi`, `mutu`), jadi penulisan
+  "VIII. Sertifikasi Kompetensi SDM KP" atau "Penjaminan Mutu LSP" tetap terbaca.
 
 ## Tautan aplikasi Laporan WFH
 
