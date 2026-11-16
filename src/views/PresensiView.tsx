@@ -156,10 +156,21 @@ export default function PresensiView() {
             disimpan, presensi langsung masuk Google Sheet secara otomatis.
           </p>
         </div>
-        <Btn variant="brand" onClick={simpan} disabled={!adaPerubahan}>
-          <I.check className="h-4 w-4" />
-          Simpan presensi{adaPerubahan ? ` (${changedP.length + changedA.length + changedSel.length})` : ""}
-        </Btn>
+        <div className="flex flex-wrap items-center gap-2">
+          <Btn
+            variant="ghost"
+            onClick={() => {
+              window.location.hash = "#/pratinjau?cetak=presensi";
+            }}
+            title="Cetak bagian C saja (rekap presensi) di halaman Pratinjau"
+          >
+            <I.print className="h-4 w-4" /> Cetak presensi
+          </Btn>
+          <Btn variant="brand" onClick={simpan} disabled={!adaPerubahan}>
+            <I.check className="h-4 w-4" />
+            Simpan presensi{adaPerubahan ? ` (${changedP.length + changedA.length + changedSel.length})` : ""}
+          </Btn>
+        </div>
       </div>
 
       <div className="space-y-3">

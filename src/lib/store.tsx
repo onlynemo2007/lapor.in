@@ -202,6 +202,14 @@ type Ctx = {
   skripInfo: SkripInfo | null;
   /** Tab minggu aktif sudah ditutup (baca-saja) menurut skrip. */
   terkunciAktif: boolean;
+  /** Mode admin aktif di perangkat ini (PIN sudah diverifikasi skrip). */
+  admin: boolean;
+  /** gid minggu terbaru menurut skrip (kosong bila belum terbaca). */
+  mingguTerbaru: string;
+  /** Minggu `gid` terkunci: bukan minggu terbaru dan belum dibuka admin di skrip. */
+  terkunciGid: (gid: string) => boolean;
+  /** Boleh membuka (melihat/mengisi) minggu `gid`: tidak terkunci, atau sedang mode admin. */
+  bolehBukaMinggu: (gid: string) => boolean;
   /** Buka / kunci kembali satu minggu — hanya berhasil bila PIN admin benar. */
   aturKunciMinggu: (gid: string, buka: boolean) => Promise<{ ok: boolean; error?: string }>;
   /** Periksa PIN admin ke skrip; bila benar disimpan di perangkat ini. */
@@ -815,6 +823,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return !(info.dibuka ?? []).includes(gid);
   }, [skripInfo, data.settings.activeGid]);
 
+  /** Mode admin: PIN admin sudah diperiksa skrip dan disimpan di perangkat ini. */
+  const admin = !!(data.settings.pinAdmin ?? "").trim();
+
+  /**
+   * Minggu terbaru = tab teratas menurut skrip (`terbaru`). Minggu baru otomatis
+   * terkunci: hanya tab ini yang bisa dibuka tanpa mode admin.
+   */
+  const mingguTerbaru = useMemo(() => {
+    const t = skripInfo?.terbaru ?? "";
+    return t && tabs.some((x) => x.gid === t) ? t : "";
+  }, [skripInfo, tabs]);
+
+  const terkunciGid = useCallback(
+    (gid: string) => {
+      if (!gid || !mingguTerbaru || gid === mingguTerbaru) return false;
+      return !(skripInfo?.dibuka ?? []).includes(gid);
+    },
+    [mingguTerbaru, skripInfo],
+  );
+
+  const bolehBukaMinggu = useCallback(
+    (gid: string) => !terkunciGid(gid) || admin,
+    [terkunciGid, admin],
+  );
+
+  /**
+   * Saat dashboard / isi laporan dibuka, tab yang aktif dipindah ke minggu terbaru.
+   * Minggu lama hanya bisa dibuka bila admin memasukkan PIN (mode admin) atau
+   * membuka kuncinya di skrip.
+   */
+  useEffect(() => {
+    const gid = data.settings.activeGid;
+    if (!mingguTerbaru || gid === mingguTerbaru || admin) return;
+    if (!terkunciGid(gid)) return;
+    setSettings({ activeGid: mingguTerbaru });
+  }, [mingguTerbaru, admin, data.settings.activeGid, terkunciGid, setSettings]);
+
   const week = data.weeks[data.settings.activeGid] ?? null;
   const dirtyCount = week ? Object.keys(week.dirty).length : 0;
 
@@ -847,6 +892,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     periksaSkrip,
     skripInfo,
     terkunciAktif,
+    admin,
+    mingguTerbaru,
+    terkunciGid,
+    bolehBukaMinggu,
     aturKunciMinggu,
     masukAdmin,
     keluarAdmin,

@@ -80,11 +80,23 @@ export const timById = (id: string) => TIMS.find((t) => t.id === id);
  */
 export const TIM_TEKNIS: TimId[] = ["sertifikasi", "standardisasi", "mutu"];
 
-export type KelompokCetak = "semua" | "dukman" | "teknis";
+export type KelompokCetak = "semua" | "dukman" | "teknis" | "presensi" | "keuangan";
 
-/** Daftar tim untuk satu kelompok cetak. */
+/** Daftar tim untuk satu kelompok cetak (cetak presensi/keuangan tidak memakai daftar tim). */
 export const timKelompok = (kel: KelompokCetak) =>
-  kel === "semua" ? TIMS : TIMS.filter((t) => TIM_TEKNIS.includes(t.id) === (kel === "teknis"));
+  kel === "dukman" || kel === "teknis"
+    ? TIMS.filter((t) => TIM_TEKNIS.includes(t.id) === (kel === "teknis"))
+    : TIMS;
+
+/** Bagian laporan (A–D) yang ikut tampil/cetak pada satu mode cetak. */
+export const bagianCetak = (kel: KelompokCetak) => ({
+  /** A (kegiatan) + B (rencana minggu depan) */
+  ab: kel === "semua" || kel === "dukman" || kel === "teknis",
+  /** C (rekap presensi) */
+  c: kel === "semua" || kel === "presensi",
+  /** D (realisasi keuangan) */
+  d: kel === "semua" || kel === "keuangan",
+});
 
 /** Baris-baris yang diisi (Program dan Monev terpecah dua). */
 export const SLOT_ROWS = TIMS.flatMap((t) => t.subs.map((sub) => ({ tim: t, sub })));

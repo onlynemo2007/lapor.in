@@ -159,10 +159,13 @@ sejak v2.4 aplikasi, **tetapi tulisan ke sheet butuh barisnya ada lebih dulu**:
   dan form rencana menampilkan "belum ada di sheet" (isian tidak dikirim, jadi tidak ada kiriman gagal);
 - begitu baris `VIII. Sertifikasi Kompetensi SDMKP` dan seterusnya ditambahkan di bagian A (5 baris tanggal) dan
   bagian B (1 baris rencana) — di tab mana pun — aplikasi langsung mengenalinya tanpa perubahan kode.
-- Menu **Pratinjau & Cetak** punya pilihan kelompok cetak: **Semua** (A–D, sepuluh tim — seperti sebelumnya),
-  **Tim Dukman** (tim I–VII) dan **Tim Teknis** (tim VIII–X). Dua pilihan terakhir dicetak terpisah dan
-  **hanya sampai tabel B (rencana kegiatan minggu depan)** — bagian C (presensi) dan D (keuangan) tidak ikut.
-  Pilihannya tersimpan di alamat: `#/pratinjau?cetak=dukman` atau `#/pratinjau?cetak=teknis`.
+- Menu **Pratinjau & Cetak** punya lima pilihan cetak: **Semua** (A–D, sepuluh tim — seperti sebelumnya),
+  **Tim Dukman** (tim I–VII), **Tim Teknis** (tim VIII–X), **Presensi** (bagian C saja) dan
+  **Keuangan** (bagian D saja). Dua pilihan tim dicetak terpisah dan **hanya sampai tabel B (rencana
+  kegiatan minggu depan)**; pilihan **Presensi** dan **Keuangan** adalah menu cetak tersendiri untuk
+  bagian C dan D, dan bisa dibuka langsung dari tombol **Cetak presensi** / **Cetak keuangan** di menu
+  Presensi dan Realisasi Keuangan. Pilihannya tersimpan di alamat:
+  `#/pratinjau?cetak=dukman`, `?cetak=teknis`, `?cetak=presensi`, atau `?cetak=keuangan`.
 - Pemilih tim di Form cepat dan Asisten chat memakai baris yang **membungkus** (flex-wrap), bukan geser
   menyamping — 10 tim tetap terlihat semua tanpa menggeser layar, termasuk di HP.
 - Nama tim di sheet dikenali dari kata kuncinya (`sertifikasi`, `standardisasi`, `mutu`), jadi penulisan
@@ -188,7 +191,7 @@ jadi tidak bisa dilewati dari tampilan:
 
 | Aturan | Perilaku |
 |---|---|
-| **Minggu lama terkunci** | Hanya tab minggu **terbaru** yang bisa ditulisi. Urutan ditentukan dari **judul** tab (`LAPORAN MINGGU II BULAN NOVEMBER 2026`), bukan posisi tab. Minggu lama bisa dibuka admin untuk koreksi. |
+| **Minggu lama terkunci** | Hanya tab minggu **terbaru** yang bisa ditulisi. Urutan ditentukan dari **judul** tab (`LAPORAN MINGGU II BULAN NOVEMBER 2026`), bukan posisi tab. Saat dashboard atau menu Isi Laporan dibuka, aplikasi **otomatis memindahkan tab ke minggu terbaru** dan mengunci pilihan minggu lama (baca-saja). Minggu lama hanya bisa dipilih/diedit setelah **admin memasukkan PIN** (tombol **Kunci minggu** di kanan atas, atau Sinkronisasi → Mode admin) atau setelah kuncinya dibuka di skrip. |
 | **Nama pengisi wajib** | Kiriman tanpa nama (≥ 2 huruf) ditolak; nama masuk ke tab `_audit`. |
 | **Aksi berisiko = admin** | `buatTab`, buka/kunci minggu, dan "kirim ulang seluruh isian" butuh **PIN admin** yang disetel di Script Properties (`PIN_ADMIN`), bukan di kode. |
 | **Batas kiriman** | Maksimal 400 sel per kiriman, 60 kiriman / 5 menit, 5 baris baru per kiriman. |

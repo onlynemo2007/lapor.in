@@ -31,7 +31,7 @@ import { StateGate } from "./common";
 type Mode = "form" | "chat" | "rencana";
 
 export default function IsiView({ params }: { params: URLSearchParams }) {
-  const { week, reload, dibacaAt } = useApp();
+  const { week, reload, dibacaAt, terkunciAktif, terkunciGid, mingguTerbaru, tabs, admin } = useApp();
   const mode = (["form", "chat", "rencana"].includes(params.get("mode") ?? "") ? params.get("mode") : "form") as Mode;
 
   if (!week) return <StateGate />;
@@ -72,6 +72,26 @@ export default function IsiView({ params }: { params: URLSearchParams }) {
           ))}
         </div>
       </div>
+
+      {/* status kunci minggu: minggu terbaru selalu bisa diisi, minggu lama butuh admin */}
+      {week.gid && mingguTerbaru && week.gid !== mingguTerbaru && !terkunciGid(week.gid) && (
+        <p className="no-print flex items-start gap-2 rounded-xl bg-warn-soft px-3 py-2 text-[12px] leading-relaxed text-warn">
+          <I.lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            Minggu <b>“{week.tab || tabs.find((t) => t.gid === week.gid)?.name}”</b> sudah lewat dan hanya dibuka untuk
+            koreksi. Minggu terbaru: <b>“{tabs.find((t) => t.gid === mingguTerbaru)?.name ?? "—"}”</b>.
+          </span>
+        </p>
+      )}
+      {terkunciAktif && (
+        <p className="no-print flex items-start gap-2 rounded-xl bg-paper px-3 py-2 text-[12px] leading-relaxed text-muted">
+          <I.lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            Minggu ini terkunci (baca-saja), jadi isian tidak dikirim ke sheet.{" "}
+            {admin ? "Buka kuncinya di menu Kunci minggu (kanan atas)." : "Minta admin membukanya lebih dulu."}
+          </span>
+        </p>
+      )}
 
       {mode === "form" && <FormKegiatan week={week} params={params} />}
       {mode === "chat" && <ChatAsisten />}

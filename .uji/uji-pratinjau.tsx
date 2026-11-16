@@ -119,7 +119,11 @@ async function main() {
 
   /* ---------------- pilihan kelompok cetak ---------------- */
   const tombolKelompok = Array.from(document.querySelectorAll("[role=tab]")).map((b) => (b.textContent ?? "").trim());
-  cek("tiga pilihan cetak tersedia", tombolKelompok.join("|") === "Semua|Tim Dukman|Tim Teknis", tombolKelompok.join("|"));
+  cek(
+    "lima pilihan cetak tersedia",
+    tombolKelompok.join("|") === "Semua|Tim Dukman|Tim Teknis|Presensi|Keuangan",
+    tombolKelompok.join("|"),
+  );
   cek("laporan lengkap memuat tim teknis", (document.body.textContent ?? "").includes("Sertifikasi Kompetensi SDMKP"));
   cek("laporan lengkap memuat bagian C dan D", /C\. Rekapitulasi/i.test(document.body.textContent ?? "") && /D\. Realisasi Keuangan/.test(document.body.textContent ?? ""));
 
@@ -157,6 +161,30 @@ async function main() {
   cek("cetak tim teknis: berhenti di rencana (tanpa C & D)", !/C\. Rekapitulasi/i.test(tt) && !/D\. Realisasi Keuangan/.test(tt));
   cek("cetak tim teknis: tiga tim baru tercetak", ["Sertifikasi Kompetensi SDMKP", "Standardisasi Kompetensi", "Penjamin Mutu LSP"].every((x) => tt.includes(x)));
   cek("cetak tim teknis: tim dukman tidak ikut", !tt.includes("Hukum") && !tt.includes("Kepegawaian"));
+
+  /* --- cetak khusus presensi (bagian C) --- */
+  await pasang(new URLSearchParams("cetak=presensi"));
+  const tp = document.body.textContent ?? "";
+  cek("cetak presensi: subjudul REKAPITULASI PRESENSI PEGAWAI", tp.includes("REKAPITULASI PRESENSI PEGAWAI"));
+  cek("cetak presensi: bagian C tercetak", /C\. Rekapitulasi/i.test(tp));
+  cek("cetak presensi: tanpa bagian A, B, dan D", !/A\. /.test(tp) && !/B\. /.test(tp) && !/D\. Realisasi Keuangan/.test(tp));
+  cek("cetak presensi: tanpa tabel tim", !tp.includes("Hukum") && !tp.includes("Sertifikasi Kompetensi SDMKP"));
+  cek(
+    "cetak presensi: pilihan aktif ditandai",
+    (document.querySelector("[role=tab][aria-selected=true]")?.textContent ?? "").trim() === "Presensi",
+  );
+
+  /* --- cetak khusus keuangan (bagian D) --- */
+  await pasang(new URLSearchParams("cetak=keuangan"));
+  const tk = document.body.textContent ?? "";
+  cek("cetak keuangan: subjudul REALISASI KEUANGAN", /REALISASI KEUANGAN/.test(tk));
+  cek("cetak keuangan: bagian D tercetak", /D\. Realisasi Keuangan/.test(tk) && tk.includes("032.12.01"));
+  cek("cetak keuangan: tabel keuangan lain ikut tercetak", tk.includes("Rekapitulasi UP") && tk.includes("Pembayaran Melalui LS"));
+  cek("cetak keuangan: tanpa bagian A, B, dan C", !/A\. /.test(tk) && !/B\. /.test(tk) && !/C\. Rekapitulasi/i.test(tk));
+  cek(
+    "cetak keuangan: pilihan aktif ditandai",
+    (document.querySelector("[role=tab][aria-selected=true]")?.textContent ?? "").trim() === "Keuangan",
+  );
 
   const lulus = hasil.filter((h) => h.lulus).length;
   hasil.filter((h) => !h.lulus).forEach((h) => console.log("  GAGAL:", h.nama, "→", h.info));

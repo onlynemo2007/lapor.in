@@ -193,6 +193,16 @@ export default function KeuanganView() {
           <Btn variant="ghost" size="sm" onClick={() => void reload(undefined, true)} title="Ambil isi terbaru dari Google Sheet">
             <I.refresh className="h-4 w-4" /> Ambil data terbaru
           </Btn>
+          <Btn
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              window.location.hash = "#/pratinjau?cetak=keuangan";
+            }}
+            title="Cetak bagian D saja (realisasi keuangan) di halaman Pratinjau"
+          >
+            <I.print className="h-4 w-4" /> Cetak keuangan
+          </Btn>
           <Btn variant="brand" onClick={() => simpan("semua")} disabled={!berubah.length && !selBerubah.length}>
             <I.check className="h-4 w-4" />
             Simpan{berubah.length + selBerubah.length ? ` (${berubah.length + selBerubah.length})` : ""}

@@ -43,7 +43,7 @@ export default function LandingView() {
           <Logo className="h-9 w-9" />
           <div className="min-w-0">
             <p className="text-[15px] font-extrabold leading-none tracking-tight">Lapor.in</p>
-            <p className="mt-1 text-[11px] text-muted">Tim Dukman · PSSSDMKP</p>
+            <p className="mt-1 text-[11px] text-muted">PSSSDMKP</p>
           </div>
         </div>
       </header>
@@ -132,7 +132,7 @@ export default function LandingView() {
           <a href="#/sinkron" className="hover:text-ink">
             Sinkronisasi &amp; kode skrip
           </a>
-          <span className="ml-auto">Lapor.in · Tim Dukman PSSSDMKP</span>
+          <span className="ml-auto">Lapor.in · PSSSDMKP</span>
         </div>
       </footer>
     </div>

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useApp } from "../lib/store";
 import {
   TOTAL_PEGAWAI,
+  bagianCetak,
   type KelompokCetak,
   timKelompok,
   joinUraian,
@@ -50,7 +51,18 @@ const PILIHAN_CETAK: { id: KelompokCetak; label: string; ket: string }[] = [
   { id: "semua", label: "Semua", ket: "Bagian A–D, sepuluh tim" },
   { id: "dukman", label: "Tim Dukman", ket: "Bagian A–B, tim I–VII" },
   { id: "teknis", label: "Tim Teknis", ket: "Bagian A–B, tim VIII–X" },
+  { id: "presensi", label: "Presensi", ket: "Bagian C saja — rekap presensi pegawai" },
+  { id: "keuangan", label: "Keuangan", ket: "Bagian D saja — realisasi keuangan" },
 ];
+
+/** Kepala cetakan untuk tiap mode: subjudul + keterangan singkat. */
+const KEPALA_CETAK: Record<KelompokCetak, { sub: string; ket: string }> = {
+  semua: { sub: "", ket: "Laporan lengkap: bagian A–D. Pilih mode lain untuk mencetak sebagian." },
+  dukman: { sub: "TIM DUKMAN", ket: "Cetak terpisah: bagian A (kegiatan) dan B (rencana minggu depan) saja." },
+  teknis: { sub: "TIM TEKNIS", ket: "Cetak terpisah: bagian A (kegiatan) dan B (rencana minggu depan) saja." },
+  presensi: { sub: "REKAPITULASI PRESENSI PEGAWAI", ket: "Cetak terpisah: bagian C — rekap presensi dan penggunaan aplikasi presensi." },
+  keuangan: { sub: "REALISASI KEUANGAN", ket: "Cetak terpisah: bagian D — realisasi anggaran per kode kegiatan." },
+};
 
 export default function PratinjauView({ params = new URLSearchParams() }: { params?: URLSearchParams }) {
   const { week, settings, reload, dibacaAt } = useApp();
@@ -64,9 +76,10 @@ export default function PratinjauView({ params = new URLSearchParams() }: { para
 
   // pilihan kelompok cetak ("semua" = laporan lengkap seperti sebelumnya)
   const pilih = params.get("cetak");
-  const mode: KelompokCetak = pilih === "dukman" || pilih === "teknis" ? pilih : "semua";
+  const mode: KelompokCetak = PILIHAN_CETAK.some((p) => p.id === pilih) ? (pilih as KelompokCetak) : "semua";
   const timCetak = timKelompok(mode);
-  const hanyaAB = mode !== "semua";
+  const bagian = bagianCetak(mode);
+  const kepala = KEPALA_CETAK[mode];
   const gantiMode = (m: KelompokCetak) => {
     window.location.hash = m === "semua" ? "#/pratinjau" : `#/pratinjau?cetak=${m}`;
   };
@@ -81,11 +94,7 @@ export default function PratinjauView({ params = new URLSearchParams() }: { para
           <p className="text-[13px] font-medium text-muted">Tab {week.tab}</p>
           <h1 className="mt-1 text-[24px] font-extrabold tracking-tight sm:text-[28px]">Pratinjau laporan</h1>
           <p className="mt-1 text-[13px] text-muted">Tampilan mengikuti format sheet. Gunakan “Cetak / PDF” → Simpan sebagai PDF.</p>
-          <p className="mt-1 text-[11.5px] text-muted">
-            {hanyaAB
-              ? "Cetak terpisah: bagian A (kegiatan) dan B (rencana minggu depan) saja."
-              : "Laporan lengkap: bagian A–D. Pilih “Tim Dukman” atau “Tim Teknis” untuk cetak terpisah."}
-          </p>
+          <p className="mt-1 text-[11.5px] text-muted">{kepala.ket}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-xl border border-line bg-white p-1" role="tablist" aria-label="Kelompok cetak">
@@ -123,14 +132,17 @@ export default function PratinjauView({ params = new URLSearchParams() }: { para
         </header>
         <div className="mt-5 text-center">
           <p className="text-[14px] font-extrabold uppercase">{week.judul}</p>
-          <p className="text-[13px] font-bold">{mode === "teknis" ? "TIM TEKNIS" : "TIM DUKMAN"}</p>
-          {hanyaAB && (
+          <p className="text-[13px] font-bold">{kepala.sub}</p>
+          {bagian.ab && mode !== "semua" && (
             <p className="mt-0.5 text-[11.5px] font-semibold">
               {timCetak.map((t) => t.label).join(" · ")}
             </p>
           )}
         </div>
 
+        {/* A + B — hanya pada cetakan Semua / Tim Dukman / Tim Teknis */}
+        {bagian.ab && (
+          <>
         {/* A */}
         <h2 className="mt-7 text-[13px] font-bold">A. {week.judulKegiatan || "Kegiatan"}</h2>
         <div className="mt-2 overflow-x-auto">
@@ -224,8 +236,11 @@ export default function PratinjauView({ params = new URLSearchParams() }: { para
           </tbody>
         </table>
 
-        {/* C — hanya pada laporan lengkap */}
-        {mode === "semua" && (
+          </>
+        )}
+
+        {/* C — tampil pada cetakan Semua & Presensi */}
+        {bagian.c && (
           <>
         {/* C */}
         <h2 className="mt-7 text-[13px] font-bold">C. {week.judulPresensi || "Rekapitulasi presensi pegawai"}</h2>
@@ -339,8 +354,8 @@ export default function PratinjauView({ params = new URLSearchParams() }: { para
           </>
         )}
 
-        {/* D — realisasi keuangan: persis seperti isi sheet (tabel per kode + tabel keuangan lain) */}
-        {mode === "semua" && (week.anggaran.length > 0 || week.tabelKeuangan.length > 0) && (
+        {/* D — tampil pada cetakan Semua & Keuangan (persis seperti isi sheet) */}
+        {bagian.d && (week.anggaran.length > 0 || week.tabelKeuangan.length > 0) && (
           <>
             <h2 className="mt-7 text-[13px] font-bold">D. Realisasi Keuangan</h2>
             {week.anggaran.length > 0 && week.tabelKeuangan.length > 0 && (

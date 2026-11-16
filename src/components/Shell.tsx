@@ -45,9 +45,11 @@ export function useRoute() {
 /* --------------------------------- shell --------------------------------- */
 
 export default function Shell({ view, children }: { view: View; children: ReactNode }) {
-  const { settings, setSettings, tabs, week, loadState, reload, pendingCount, syncState } = useApp();
+  const { settings, setSettings, tabs, week, loadState, reload, pendingCount, syncState, admin, bolehBukaMinggu } =
+    useApp();
   const gagalSinkron = syncState.status === "error";
   const [editNama, setEditNama] = useState(false);
+  const [aturKunci, setAturKunci] = useState(false);
   const loading = loadState.status === "loading";
 
   return (
@@ -62,7 +64,7 @@ export default function Shell({ view, children }: { view: View; children: ReactN
           <Logo className="h-8 w-8" />
           <div>
             <p className="text-[16px] font-extrabold leading-none tracking-tight">Lapor.in</p>
-            <p className="mt-1 text-[11px] text-muted">Tim Dukman · PSSSDMKP</p>
+            <p className="mt-1 text-[11px] text-muted">PSSSDMKP</p>
           </div>
         </a>
 
@@ -142,8 +144,9 @@ export default function Shell({ view, children }: { view: View; children: ReactN
               aria-label="Pilih minggu (tab sheet)"
             >
               {tabs.map((t) => (
-                <option key={t.gid} value={t.gid}>
+                <option key={t.gid} value={t.gid} disabled={!bolehBukaMinggu(t.gid)}>
                   Tab {t.name}
+                  {bolehBukaMinggu(t.gid) ? "" : " · terkunci"}
                 </option>
               ))}
               {/* tab aktif yang belum ada di daftar (mis. baru dibuat rekan) tetap tampil */}
@@ -153,6 +156,21 @@ export default function Shell({ view, children }: { view: View; children: ReactN
             </select>
             <I.down className="pointer-events-none absolute right-3 h-4 w-4 text-muted" />
           </label>
+
+          <Btn
+            variant="ghost"
+            size="sm"
+            className={cx("h-10 shrink-0 px-2.5", admin && "text-brand")}
+            title={
+              admin
+                ? "Mode admin aktif — minggu lama boleh dibuka di perangkat ini"
+                : "Minggu lama dikunci. Buka mode admin (PIN) untuk mengedit minggu lama."
+            }
+            onClick={() => setAturKunci(true)}
+          >
+            <I.lock className="h-4 w-4" />
+            <span className="hidden md:inline">{admin ? "Admin" : "Kunci minggu"}</span>
+          </Btn>
 
           <Btn
             variant="ghost"
@@ -232,6 +250,189 @@ export default function Shell({ view, children }: { view: View; children: ReactN
       </nav>
 
       {(editNama || !settings.nama) && <Profil onClose={() => setEditNama(false)} />}
+      {aturKunci && <KunciMinggu onClose={() => setAturKunci(false)} />}
+    </div>
+  );
+}
+
+/* -------------------------- kunci minggu / mode admin -------------------------- */
+
+/**
+ * Minggu terbaru selalu bisa diisi; minggu lama terkunci otomatis. Admin membuka
+ * kuncinya dengan PIN — PIN diperiksa Apps Script, tidak dikirim ke sheet.
+ */
+function KunciMinggu({ onClose }: { onClose: () => void }) {
+  const {
+    settings,
+    setSettings,
+    tabs,
+    week,
+    admin,
+    mingguTerbaru,
+    terkunciGid,
+    aturKunciMinggu,
+    masukAdmin,
+    keluarAdmin,
+  } = useApp();
+  const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [busyGid, setBusyGid] = useState("");
+  const [pesan, setPesan] = useState<{ ok: boolean; text: string } | null>(null);
+  const nama = (gid: string) => tabs.find((t) => t.gid === gid)?.name ?? gid;
+
+  const bukaAdmin = async () => {
+    if (!pin.trim()) return;
+    setBusy(true);
+    const r = await masukAdmin(pin);
+    setBusy(false);
+    if (r.ok) {
+      setPin("");
+      setPesan({ ok: true, text: "Mode admin aktif di perangkat ini. Minggu lama kini bisa dipilih dan dibuka." });
+    } else {
+      setPesan({ ok: false, text: r.error ?? "PIN admin salah." });
+    }
+  };
+
+  const ubahKunci = async (gid: string, buka: boolean) => {
+    setBusyGid(gid);
+    const r = await aturKunciMinggu(gid, buka);
+    setBusyGid("");
+    setPesan({
+      ok: r.ok,
+      text: r.ok
+        ? buka
+          ? `Minggu “${nama(gid)}” dibuka kembali — semua pengisi boleh mengoreksinya.`
+          : `Minggu “${nama(gid)}” dikunci lagi.`
+        : r.error ?? "Skrip menolak permintaan.",
+    });
+  };
+
+  return (
+    <div className="no-print anim-fade fixed inset-0 z-[70] grid place-items-center bg-ink/40 p-4 backdrop-blur-sm">
+      <div className="anim-pop flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="flex items-start gap-3 border-b border-line px-6 py-5">
+          <span className={cx("grid h-10 w-10 shrink-0 place-items-center rounded-2xl", admin ? "bg-brand-soft text-brand" : "bg-paper text-muted")}>
+            <I.lock className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-[17px] font-bold tracking-tight">Kunci minggu</h2>
+            <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+              Minggu terbaru ({mingguTerbaru ? nama(mingguTerbaru) : "—"}) selalu bisa diisi. Minggu lama terkunci
+              otomatis; hanya admin yang boleh membukanya untuk koreksi.
+            </p>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+          <ul className="space-y-1.5">
+            {tabs.slice(0, 12).map((t) => {
+              const kunci = terkunciGid(t.gid);
+              const aktif = settings.activeGid === t.gid;
+              return (
+                <li
+                  key={t.gid}
+                  className={cx(
+                    "flex items-center gap-2 rounded-xl border px-3 py-2",
+                    aktif ? "border-ink bg-paper" : "border-line",
+                  )}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-semibold">Tab {t.name}</span>
+                    <span className="block text-[11px] text-muted">
+                      {t.gid === mingguTerbaru ? "Minggu terbaru · bisa diisi" : kunci ? "Terkunci · baca-saja" : "Dibuka untuk koreksi"}
+                    </span>
+                  </span>
+                  {t.gid !== mingguTerbaru && admin && (
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 bg-white"
+                      disabled={busyGid === t.gid}
+                      onClick={() => void ubahKunci(t.gid, kunci)}
+                      title={kunci ? "Buka kunci minggu ini di sheet" : "Kunci lagi minggu ini di sheet"}
+                    >
+                      {busyGid === t.gid ? <Spinner className="h-3.5 w-3.5" /> : <I.lock className="h-3.5 w-3.5" />}
+                      {kunci ? "Buka" : "Kunci"}
+                    </Btn>
+                  )}
+                  {!kunci && !aktif && (
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 bg-white"
+                      onClick={() => {
+                        setSettings({ activeGid: t.gid });
+                        onClose();
+                      }}
+                    >
+                      Pakai
+                    </Btn>
+                  )}
+                  {aktif && <span className="shrink-0 rounded-full bg-ink px-2 py-1 text-[10.5px] font-bold text-white">Aktif</span>}
+                </li>
+              );
+            })}
+          </ul>
+          {tabs.length > 12 && (
+            <p className="mt-2 text-[11px] text-muted">Menampilkan 12 tab terbaru dari {tabs.length} tab.</p>
+          )}
+
+          {pesan && (
+            <p className={cx("mt-3 rounded-xl px-3 py-2 text-[12px]", pesan.ok ? "bg-brand-soft text-[#0b5e42]" : "bg-bad-soft text-bad")}>
+              {pesan.text}
+            </p>
+          )}
+        </div>
+
+        <div className="border-t border-line px-6 py-4">
+          {admin ? (
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[12px] text-muted">
+                Mode admin aktif{week ? ` · tab ${week.tab}` : ""}
+              </p>
+              <Btn
+                variant="ghost"
+                onClick={() => {
+                  keluarAdmin();
+                  setPesan({ ok: true, text: "Mode admin ditutup. Minggu lama terkunci lagi." });
+                }}
+              >
+                <I.x className="h-4 w-4" /> Tutup mode admin
+              </Btn>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="block flex-1">
+                <span className="block text-[11.5px] font-semibold text-muted">PIN admin</span>
+                <input
+                  type="password"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    void bukaAdmin();
+                  }}
+                  placeholder="••••••"
+                  className="mt-1 h-10 w-full rounded-xl border border-line bg-paper px-3 font-mono text-[12.5px] outline-none transition focus:border-brand focus:bg-white"
+                />
+              </label>
+              <Btn
+                variant="brand"
+                onClick={() => void bukaAdmin()}
+                disabled={busy || !pin.trim() || !settings.scriptUrl}
+              >
+                {busy ? <Spinner className="h-4 w-4" /> : <I.lock className="h-4 w-4" />} Buka mode admin
+              </Btn>
+            </div>
+          )}
+          <div className="mt-3 flex justify-end">
+            <Btn variant="ghost" onClick={onClose}>
+              Tutup
+            </Btn>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
