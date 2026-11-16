@@ -17,6 +17,7 @@ import {
   tanggalPendek,
   teksKeButir,
   timById,
+  timTerkunci,
 } from "../lib/model";
 import { go } from "../components/Shell";
 import { I, Logo, cx } from "../components/ui";
@@ -36,7 +37,9 @@ function cariTim(text: string): Tim | undefined {
 }
 
 export default function ChatAsisten() {
-  const { week, settings, updateWeek } = useApp();
+  const { week, settings, updateWeek, admin } = useApp();
+  /** Pegawai biasa hanya mengisi timnya sendiri (tim utama di Profil); admin boleh semua tim. */
+  const timSendiri = timTerkunci(settings.timUtama, admin);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [step, setStep] = useState<Step>("tim");
   const [typing, setTyping] = useState(false);
@@ -69,7 +72,26 @@ export default function ChatAsisten() {
 
   const mulai = () => {
     ctx.current = { tim: "", sub: "", d: "", items: [], lamp: "" };
-    const t = timById(settings.timUtama);
+    const t = timSendiri ?? timById(settings.timUtama);
+    // Tim sendiri langsung dipakai: pegawai biasa tidak ditawari "tim lain".
+    if (timSendiri) {
+      bot(
+        [
+          <>
+            Halo{settings.nama ? `, ${settings.nama.split(" ")[0]}` : ""}! Saya bantu isi{" "}
+            <b>{week?.judulKegiatan || "laporan minggu ini"}</b>.
+          </>,
+          <>
+            Isian dikunci untuk tim <b>{timSendiri.label}</b> (tim utama Anda).{" "}
+            {timSendiri.subs.length > 1 ? "Bagian Program atau Monev?" : "Hari apa yang mau diisi?"}
+          </>,
+        ],
+        timSendiri.subs.length > 1 ? "sub" : "hari",
+      );
+      ctx.current.tim = timSendiri.id;
+      if (timSendiri.subs.length === 1) ctx.current.sub = timSendiri.subs[0] ?? "";
+      return;
+    }
     bot(
       [
         <>
@@ -274,6 +296,10 @@ export default function ChatAsisten() {
     setText("");
     if (step === "tim") {
       const t = cariTim(v);
+      if (timSendiri && t && t.id !== timSendiri.id) {
+        user(v);
+        return bot([<>Isian dikunci untuk tim <b>{timSendiri.label}</b>. Tim lain diisi anggotanya masing-masing.</>], "tim");
+      }
       if (t) return pilihTim(t);
       user(v);
       return bot(["Tim tidak dikenali. Pilih salah satu tombol di bawah."], "tim");
@@ -319,6 +345,7 @@ export default function ChatAsisten() {
     if (typing) return [];
     switch (step) {
       case "tim": {
+        if (timSendiri) return [{ label: timSendiri.label, onPick: () => pilihTim(timSendiri), primary: true }];
         const u = timById(settings.timUtama);
         const list = u ? [u, ...TIMS.filter((t) => t.id !== u.id)] : TIMS;
         return list.map((t, i) => ({ label: t.label, onPick: () => pilihTim(t), primary: !!u && i === 0 }));
@@ -376,7 +403,7 @@ export default function ChatAsisten() {
         const next = week.dates.find((d) => d !== c.d && !week.kegiatan[slotKey(c.tim, c.sub, d)] && d !== c.d);
         const out: Chip[] = [];
         if (next) out.push({ label: `Isi ${hariDari(next)}`, primary: true, onPick: () => pilihHari(next) });
-        out.push({ label: "Ganti tim", onPick: () => { user("Ganti tim"); bot(["Tim mana?"], "tim"); } });
+        if (!timSendiri) out.push({ label: "Ganti tim", onPick: () => { user("Ganti tim"); bot(["Tim mana?"], "tim"); } });
         out.push({ label: "Lihat sinkronisasi", primary: !next, onPick: () => go("sinkron") });
         out.push({ label: "Lihat dashboard", onPick: () => go("dashboard") });
         return out;

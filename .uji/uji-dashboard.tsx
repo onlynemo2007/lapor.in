@@ -81,7 +81,10 @@ async function main() {
   const r = ringkas(w);
   cek("angka kelengkapan sesuai isi sheet", teks().includes(`${r.slotTerisi}/${r.slotTotal}`), `${r.slotTerisi}/${r.slotTotal} :: ${teks().slice(0, 200)}`);
   const kotakTerisi = Array.from(document.querySelectorAll("button")).filter((b) => (b.textContent ?? "").trim() === "1");
-  cek("kotak peta menampilkan jumlah butir", kotakTerisi.length >= 4, String(kotakTerisi.length));
+  // pegawai (bukan admin) hanya boleh membuka sel timnya sendiri → jumlah butir tampil di sel Humas
+  cek("kotak peta menampilkan jumlah butir tim sendiri", kotakTerisi.length >= 1, String(kotakTerisi.length));
+  const selTerkunci = Array.from(document.querySelectorAll("button")).filter((b) => (b as HTMLButtonElement).disabled);
+  cek("sel tim lain terkunci di peta isian", selTerkunci.length > 0, String(selTerkunci.length));
   cek("baris tak terbaca dilaporkan", /belum bisa dipetakan/.test(teks()), teks().slice(-300));
   cek("tim yang dikenal tetap n/a", /n\/a/.test(teks()), "");
   cek("rincian pembacaan sheet tersedia", /Rincian pembacaan sheet/.test(teks()), "");

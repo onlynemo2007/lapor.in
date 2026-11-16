@@ -1,13 +1,13 @@
 import { useEffect, useMemo } from "react";
 import { useApp } from "../lib/store";
-import { SLOT_ROWS, TIMS, TOTAL_PEGAWAI, hariDari, norm, rupiahPendek, ringkas, slotAda, slotKey, slotLabel, tanggalPendek } from "../lib/model";
+import { SLOT_ROWS, TIMS, TOTAL_PEGAWAI, hariDari, norm, rupiahPendek, ringkas, slotAda, slotKey, slotLabel, tanggalPendek, timTerkunci } from "../lib/model";
 import { go } from "../components/Shell";
 import { jamSinkron } from "../lib/sync";
 import { Btn, Card, I, Pill, Progress, SectionTitle, Spinner, cx } from "../components/ui";
 import { StateGate } from "./common";
 
 export default function DashboardView() {
-  const { week, settings, setSettings, trend, loadTrend, trendLoading, tabs, pendingCount, syncState, reload, dibacaAt } = useApp();
+  const { week, settings, setSettings, trend, loadTrend, trendLoading, tabs, pendingCount, syncState, reload, dibacaAt, admin } = useApp();
 
   // Peta isian harus memakai isi sheet terbaru: baca ulang diam-diam saat dashboard dibuka.
   useEffect(() => {
@@ -45,6 +45,9 @@ export default function DashboardView() {
 
   // slot kosong pertama untuk tim utama
   const timUtama = TIMS.find((t) => t.id === settings.timUtama);
+  // Batas tim: pegawai hanya boleh mengisi tim utamanya sendiri (admin bebas).
+  const timSendiri = timTerkunci(settings.timUtama, admin);
+  const bolehIsi = (id: string) => !timSendiri || timSendiri.id === id;
   const kosongUtama = timUtama
     ? timUtama.subs.flatMap((sub) => week.dates.filter((d) => !week.kegiatan[slotKey(timUtama.id, sub, d)]).map((d) => ({ sub, d })))
     : [];
@@ -201,15 +204,21 @@ export default function DashboardView() {
                         <td key={d}>
                           <button
                             onClick={() => go("isi", { tim: tim.id, sub, d })}
-                            title={`${slotLabel(tim.id, sub)} · ${d}${n ? ` · ${n} butir` : " · kosong"}`}
+                            disabled={!bolehIsi(tim.id)}
+                            title={
+                              bolehIsi(tim.id)
+                                ? `${slotLabel(tim.id, sub)} · ${d}${n ? ` · ${n} butir` : " · kosong"}`
+                                : `${slotLabel(tim.id, sub)} — hanya tim ${timSendiri?.label} yang bisa Anda isi`
+                            }
                             className={cx(
                               "group grid h-11 w-full place-items-center rounded-lg text-[13px] font-bold transition-all hover:scale-[1.04]",
                               n ? "text-ink" : "border border-dashed border-[#d6d5cf] text-[#b9b8b2] hover:border-brand hover:text-brand",
                               dirty && "ring-2 ring-warn ring-offset-1",
+                              !bolehIsi(tim.id) && "cursor-not-allowed opacity-45 hover:scale-100",
                             )}
                             style={n ? { background: `color-mix(in srgb, ${tim.tone} ${Math.min(18 + n * 14, 70)}%, white)` } : undefined}
                           >
-                            {n ? n : <I.plus className="h-4 w-4" />}
+                            {!bolehIsi(tim.id) ? <I.lock className="h-3.5 w-3.5" /> : n ? n : <I.plus className="h-4 w-4" />}
                           </button>
                         </td>
                       );
@@ -279,14 +288,20 @@ export default function DashboardView() {
                   <span className="h-2.5 w-2.5 rounded-full" style={{ background: tim.tone }} />
                   <span className="min-w-[150px] flex-1 text-[13.5px] font-semibold">{slotLabel(tim.id, sub)}</span>
                   <div className="flex flex-wrap gap-1.5">
-                    {hari.map((d) => (
-                      <button
-                        key={d}
-                        onClick={() => go("isi", { tim: tim.id, sub, d })}
-                        className="rounded-lg border border-line px-2 py-1 text-[11.5px] font-semibold text-muted transition hover:border-brand hover:bg-brand-soft hover:text-brand"
-                      >
-                        {hariDari(d).slice(0, 3)} {tanggalPendek(d)}
-                      </button>
+                    {(!bolehIsi(tim.id) ? (
+                      <span className="rounded-lg bg-[#f3f2ee] px-2 py-1 text-[11.5px] font-semibold text-[#b9b8b2]" title={`Hanya tim ${timSendiri?.label} yang bisa Anda isi`}>
+                        tim lain
+                      </span>
+                    ) : (
+                      hari.map((d) => (
+                        <button
+                          key={d}
+                          onClick={() => go("isi", { tim: tim.id, sub, d })}
+                          className="rounded-lg border border-line px-2 py-1 text-[11.5px] font-semibold text-muted transition hover:border-brand hover:bg-brand-soft hover:text-brand"
+                        >
+                          {hariDari(d).slice(0, 3)} {tanggalPendek(d)}
+                        </button>
+                      ))
                     ))}
                   </div>
                 </li>

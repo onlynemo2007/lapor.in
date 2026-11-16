@@ -117,7 +117,11 @@ async function main() {
   cek("tab 10 tim: tidak ada baris tak terbaca", (baru.takTerbaca ?? []).length === 0, JSON.stringify(baru.takTerbaca ?? []).slice(0, 120));
 
   /* ---------------- dashboard menampilkan tim baru ---------------- */
-  localStorage.setItem("laporin:v3", JSON.stringify({ v: 2, settings: { nama: "Uji", timUtama: "humas" }, weeks: {}, trend: {}, log: [] }));
+  // mode admin: pemeriksaan di bawah melihat kesepuluh tim sekaligus (pegawai biasa hanya timnya sendiri)
+  localStorage.setItem(
+    "laporin:v3",
+    JSON.stringify({ v: 2, settings: { nama: "Uji", timUtama: "humas", pinAdmin: "1234" }, weeks: {}, trend: {}, log: [] }),
+  );
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     if (init?.method === "POST") {
       return { ok: true, text: async () => JSON.stringify({ ok: true, versi: "2.3", ditulis: 1, gagal: [] }) } as unknown as Response;
@@ -166,7 +170,7 @@ async function main() {
   await act(async () => {
     await new Promise((r) => setTimeout(r, 80));
   });
-  cek("rencana: tim lama bisa diisi", teks().includes("Keuangan"));
+  cek("rencana: tim lama bisa diisi (mode admin)", teks().includes("Keuangan"));
   cek("rencana: tiga tim baru ditandai belum ada di sheet", (teks().match(/belum ada di sheet/g) ?? []).length >= 3, String((teks().match(/belum ada di sheet/g) ?? []).length));
 
   /* ---------------- pemilih tim tidak melebihi layar ---------------- */
@@ -192,7 +196,7 @@ async function main() {
   cek("form cepat: pemilih tim dibungkus (flex-wrap)", /flex-wrap/.test(kelas), kelas);
   cek("form cepat: tidak perlu digeser (tanpa overflow-x)", !/overflow-x-auto/.test(kelas), kelas);
   const chipTim = pemilih ? Array.from(pemilih.querySelectorAll("button")) : [];
-  cek("form cepat: 10 tim tampil semua", chipTim.length === 10, String(chipTim.length));
+  cek("form cepat: 10 tim tampil semua (mode admin)", chipTim.length === 10, String(chipTim.length));
   cek(
     "form cepat: chip tidak dikunci selebar layar",
     chipTim.length > 0 && chipTim.every((b) => !/shrink-0 rounded-full border px-3\.5 py-2 text-\[13px\]/.test(b.className)),
@@ -221,7 +225,7 @@ async function main() {
   cek("asisten chat: pemilih tim dibungkus (flex-wrap)", /flex-wrap/.test(kelasChat), kelasChat);
   cek("asisten chat: tidak perlu digeser (tanpa overflow-x)", !/overflow-x-auto/.test(kelasChat), kelasChat);
   const chipChat = pemilihChat ? Array.from(pemilihChat.querySelectorAll("button")) : [];
-  cek("asisten chat: 10 tim tampil semua", chipChat.length === 10, String(chipChat.length));
+  cek("asisten chat: 10 tim tampil semua (mode admin)", chipChat.length === 10, String(chipChat.length));
 
   const lulus = hasil.filter((h) => h.lulus).length;
   for (const h of hasil) console.log(`${h.lulus ? "✓" : "✗"} ${h.nama}${h.info ? ` — ${h.info}` : ""}`);

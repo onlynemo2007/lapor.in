@@ -15,6 +15,7 @@ import {
   rapikan,
   slotAda,
   slotKey,
+  timTerkunci,
   splitLinks,
   susunLampiran,
   tanggalPendek,
@@ -103,12 +104,16 @@ export default function IsiView({ params }: { params: URLSearchParams }) {
 /* ------------------------------- form kegiatan ------------------------------- */
 
 function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParams }) {
-  const { settings, updateWeek, syncState } = useApp();
+  const { settings, updateWeek, syncState, admin } = useApp();
   const toast = useToast();
   const siapSinkron = !!settings.scriptUrl && !!settings.token && settings.autoSync;
 
+  /** Pegawai biasa hanya mengisi timnya sendiri (tim utama di Profil); admin boleh semua tim. */
+  const timSendiri = timTerkunci(settings.timUtama, admin);
+
   const awal = () => {
-    const t = timById(params.get("tim") ?? "") ?? timById(settings.timUtama) ?? TIMS[0];
+    // saat terkunci, tim dari tautan/URL diabaikan — selalu tim sendiri
+    const t = timSendiri ?? timById(params.get("tim") ?? "") ?? timById(settings.timUtama) ?? TIMS[0];
     const ps = params.get("sub") ?? "";
     const sub = t.subs.includes(ps) ? ps : t.subs[0];
     const pd = week.dates.find((d) => norm(d) === norm(params.get("d") ?? ""));
@@ -129,7 +134,11 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
   // param URL berubah (mis. klik dari dashboard)
   const pstr = params.toString();
   useEffect(() => {
-    if (params.get("tim") || params.get("d")) pindah(awal());
+    const minta = params.get("tim") ?? "";
+    if (timSendiri && minta && minta !== timSendiri.id) {
+      toast(`Isian dibatasi untuk tim ${timSendiri.label}`, "info");
+    }
+    if (minta || params.get("d")) pindah(awal());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pstr]);
 
@@ -214,10 +223,19 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
     <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
       <Card className="p-5 sm:p-6">
         {/* tim */}
-        <p className="text-[12px] font-semibold uppercase tracking-wider text-muted">Tim</p>
-        {/* chips dibungkus (wrap) — 10 tim tetap terlihat tanpa menggeser layar */}
+        <p className="flex flex-wrap items-center gap-2 text-[12px] font-semibold uppercase tracking-wider text-muted">
+          Tim
+          {timSendiri && (
+            <span className="rounded-full bg-paper px-2 py-0.5 text-[10.5px] font-bold normal-case tracking-normal text-muted">
+              <I.lock className="mr-1 inline h-3 w-3 align-[-2px]" />
+              hanya tim Anda
+            </span>
+          )}
+        </p>
+        {/* chips dibungkus (wrap) — 10 tim tetap terlihat tanpa menggeser layar.
+            Pegawai biasa hanya melihat timnya sendiri (tim utama di Profil). */}
         <div className="mt-2 flex flex-wrap gap-1.5" data-pemilih-tim>
-          {TIMS.map((t) => {
+          {(timSendiri ? [timSendiri] : TIMS).map((t) => {
             const on = t.id === slot.tim;
             return (
               <button
@@ -238,6 +256,13 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
             );
           })}
         </div>
+
+        {timSendiri && (
+          <p className="mt-2 text-[11.5px] leading-relaxed text-muted">
+            Isian dikunci untuk tim <b className="text-ink">{timSendiri.label}</b>. Salah tim? Ganti tim utama lewat
+            menu profil di kiri bawah.
+          </p>
+        )}
 
         {tim.subs.length > 1 && (
           <div className="mt-3 flex gap-1.5">
@@ -570,12 +595,15 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
 /* ------------------------------- form rencana ------------------------------- */
 
 function FormRencana({ week }: { week: WeekData }) {
-  const { settings, updateWeek } = useApp();
+  const { settings, updateWeek, admin } = useApp();
   const toast = useToast();
+  /** Pegawai biasa hanya mengisi rencana timnya sendiri; admin boleh semua tim. */
+  const timSendiri = timTerkunci(settings.timUtama, admin);
   const urut = useMemo(() => {
+    if (timSendiri) return [timSendiri];
     const u = TIMS.find((t) => t.id === settings.timUtama);
     return u ? [u, ...TIMS.filter((t) => t.id !== u.id)] : TIMS;
-  }, [settings.timUtama]);
+  }, [settings.timUtama, timSendiri]);
   const [buka, setBuka] = useState<string>(urut[0].id);
   const [draft, setDraft] = useState<Record<string, string[]>>({});
 
@@ -598,6 +626,15 @@ function FormRencana({ week }: { week: WeekData }) {
   return (
     <div className="space-y-3">
       <p className="text-[13.5px] text-muted">{week.judulRencana || "Rencana kegiatan minggu berikutnya"} — satu sel per tim di kolom D.</p>
+      {timSendiri && (
+        <p className="flex items-start gap-2 rounded-xl bg-paper px-3 py-2 text-[12px] leading-relaxed text-muted">
+          <I.lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            Rencana dikunci untuk tim <b className="text-ink">{timSendiri.label}</b> (tim utama Anda). Tim lain
+            diisi oleh anggotanya masing-masing.
+          </span>
+        </p>
+      )}
       {urut.map((t) => {
         const items = itemsOf(t.id);
         const on = buka === t.id;
@@ -606,7 +643,11 @@ function FormRencana({ week }: { week: WeekData }) {
         const adaBaris = !!week.rows.B[t.id];
         return (
           <Card key={t.id} className={cx("overflow-hidden transition", on && "border-[#d3d2cc] shadow-sm")}>
-            <button onClick={() => setBuka(on ? "" : t.id)} className="flex w-full items-center gap-3 px-5 py-4 text-left">
+            <button
+              onClick={() => setBuka(on ? "" : t.id)}
+              data-rencana-tim={t.id}
+              className="flex w-full items-center gap-3 px-5 py-4 text-left"
+            >
               <span className="h-2.5 w-2.5 rounded-full" style={{ background: t.tone }} />
               <span className="text-[14px] font-bold">
                 <span className="mr-1.5 text-[12px] text-muted">{t.no}</span>

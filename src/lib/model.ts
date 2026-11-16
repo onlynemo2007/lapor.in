@@ -75,6 +75,13 @@ export const TIMS: Tim[] = [
 export const timById = (id: string) => TIMS.find((t) => t.id === id);
 
 /**
+ * Tim yang dikunci untuk pengguna ini: **tim utama** yang dipilih di Profil.
+ * `null` = tidak dikunci (belum memilih tim, atau mode admin aktif sehingga semua tim boleh).
+ */
+export const timTerkunci = (timUtama: string, admin: boolean): Tim | null =>
+  admin ? null : timById(timUtama) ?? null;
+
+/**
  * Tim teknis (VIII–X): Sertifikasi Kompetensi SDMKP, Standardisasi Kompetensi, Penjamin Mutu LSP.
  * Dicetak terpisah dari tim dukman di menu Pratinjau & Cetak.
  */

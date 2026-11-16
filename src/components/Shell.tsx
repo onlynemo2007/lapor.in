@@ -482,7 +482,7 @@ function Profil({ onClose }: { onClose: () => void }) {
           className="mt-1.5 w-full rounded-xl border border-line bg-paper px-4 py-3 text-[14px] outline-none transition focus:border-brand focus:bg-white"
         />
 
-        <label className="mt-4 block text-[12.5px] font-semibold">Tim utama (dipilih otomatis saat mengisi)</label>
+        <label className="mt-4 block text-[12.5px] font-semibold">Tim utama — hanya tim ini yang bisa Anda isi</label>
         <div className="mt-2 flex flex-wrap gap-2">
           {TIMS.map((t) => (
             <button
@@ -497,6 +497,11 @@ function Profil({ onClose }: { onClose: () => void }) {
             </button>
           ))}
         </div>
+
+        <p className="mt-2 text-[11.5px] leading-relaxed text-muted">
+          Form cepat, Asisten chat, dan Rencana minggu depan terkunci ke tim ini agar isian tidak tertukar antar tim.
+          Admin (mode PIN) tetap bisa mengisi semua tim.
+        </p>
 
         <div className="mt-6 flex justify-end gap-2">
           {!first && (
