@@ -74,6 +74,18 @@ export const TIMS: Tim[] = [
 
 export const timById = (id: string) => TIMS.find((t) => t.id === id);
 
+/**
+ * Tim teknis (VIII–X): Sertifikasi Kompetensi SDMKP, Standardisasi Kompetensi, Penjamin Mutu LSP.
+ * Dicetak terpisah dari tim dukman di menu Pratinjau & Cetak.
+ */
+export const TIM_TEKNIS: TimId[] = ["sertifikasi", "standardisasi", "mutu"];
+
+export type KelompokCetak = "semua" | "dukman" | "teknis";
+
+/** Daftar tim untuk satu kelompok cetak. */
+export const timKelompok = (kel: KelompokCetak) =>
+  kel === "semua" ? TIMS : TIMS.filter((t) => TIM_TEKNIS.includes(t.id) === (kel === "teknis"));
+
 /** Baris-baris yang diisi (Program dan Monev terpecah dua). */
 export const SLOT_ROWS = TIMS.flatMap((t) => t.subs.map((sub) => ({ tim: t, sub })));
 

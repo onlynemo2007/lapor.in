@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { useApp } from "../lib/store";
 import {
-  TIMS,
   TOTAL_PEGAWAI,
+  type KelompokCetak,
+  timKelompok,
   joinUraian,
   lampKey,
   lampiranTanggal,
@@ -45,7 +46,13 @@ const kepalaDari = (kolom: { index: number; label: string; kelompok?: string }[]
   return out;
 };
 
-export default function PratinjauView() {
+const PILIHAN_CETAK: { id: KelompokCetak; label: string; ket: string }[] = [
+  { id: "semua", label: "Semua", ket: "Bagian A–D, sepuluh tim" },
+  { id: "dukman", label: "Tim Dukman", ket: "Bagian A–B, tim I–VII" },
+  { id: "teknis", label: "Tim Teknis", ket: "Bagian A–B, tim VIII–X" },
+];
+
+export default function PratinjauView({ params = new URLSearchParams() }: { params?: URLSearchParams }) {
   const { week, settings, reload, dibacaAt } = useApp();
 
   // Pratinjau & cetak harus memakai isi sheet terbaru: ambil ulang diam-diam saat halaman dibuka.
@@ -54,6 +61,15 @@ export default function PratinjauView() {
   }, [reload, dibacaAt]);
 
   if (!week) return <StateGate />;
+
+  // pilihan kelompok cetak ("semua" = laporan lengkap seperti sebelumnya)
+  const pilih = params.get("cetak");
+  const mode: KelompokCetak = pilih === "dukman" || pilih === "teknis" ? pilih : "semua";
+  const timCetak = timKelompok(mode);
+  const hanyaAB = mode !== "semua";
+  const gantiMode = (m: KelompokCetak) => {
+    window.location.hash = m === "semua" ? "#/pratinjau" : `#/pratinjau?cetak=${m}`;
+  };
 
   const kepalaApl = week.aplikasiTabel ? kepalaDari(week.aplikasiTabel.kolom) : [];
   const adaKelompokApl = kepalaApl.some((k) => k.kelompok);
@@ -65,8 +81,29 @@ export default function PratinjauView() {
           <p className="text-[13px] font-medium text-muted">Tab {week.tab}</p>
           <h1 className="mt-1 text-[24px] font-extrabold tracking-tight sm:text-[28px]">Pratinjau laporan</h1>
           <p className="mt-1 text-[13px] text-muted">Tampilan mengikuti format sheet. Gunakan “Cetak / PDF” → Simpan sebagai PDF.</p>
+          <p className="mt-1 text-[11.5px] text-muted">
+            {hanyaAB
+              ? "Cetak terpisah: bagian A (kegiatan) dan B (rencana minggu depan) saja."
+              : "Laporan lengkap: bagian A–D. Pilih “Tim Dukman” atau “Tim Teknis” untuk cetak terpisah."}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-xl border border-line bg-white p-1" role="tablist" aria-label="Kelompok cetak">
+            {PILIHAN_CETAK.map((p) => (
+              <button
+                key={p.id}
+                role="tab"
+                aria-selected={mode === p.id}
+                title={p.ket}
+                onClick={() => gantiMode(p.id)}
+                className={`rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition ${
+                  mode === p.id ? "bg-ink text-white" : "text-muted hover:text-ink"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
           <p className="text-[11.5px] text-muted">
             {dibacaAt ? `Data sheet dibaca ${jamSinkron(dibacaAt)}` : "Membaca sheet…"}
           </p>
@@ -86,7 +123,12 @@ export default function PratinjauView() {
         </header>
         <div className="mt-5 text-center">
           <p className="text-[14px] font-extrabold uppercase">{week.judul}</p>
-          <p className="text-[13px] font-bold">TIM DUKMAN</p>
+          <p className="text-[13px] font-bold">{mode === "teknis" ? "TIM TEKNIS" : "TIM DUKMAN"}</p>
+          {hanyaAB && (
+            <p className="mt-0.5 text-[11.5px] font-semibold">
+              {timCetak.map((t) => t.label).join(" · ")}
+            </p>
+          )}
         </div>
 
         {/* A */}
@@ -103,7 +145,7 @@ export default function PratinjauView() {
               </tr>
             </thead>
             <tbody>
-              {TIMS.map((t) => {
+              {timCetak.map((t) => {
                 const rows = t.subs.flatMap((sub) => [
                   ...(sub ? [{ kind: "sub" as const, sub, d: "" }] : []),
                   ...week.dates.map((d) => ({ kind: "day" as const, sub, d })),
@@ -172,7 +214,7 @@ export default function PratinjauView() {
             </tr>
           </thead>
           <tbody>
-            {TIMS.map((t) => (
+            {timCetak.map((t) => (
               <tr key={t.id}>
                 <td className={`${td} text-center font-semibold`}>{t.no}</td>
                 <td className={`${td} font-semibold`}>{t.label}</td>
@@ -182,6 +224,9 @@ export default function PratinjauView() {
           </tbody>
         </table>
 
+        {/* C — hanya pada laporan lengkap */}
+        {mode === "semua" && (
+          <>
         {/* C */}
         <h2 className="mt-7 text-[13px] font-bold">C. {week.judulPresensi || "Rekapitulasi presensi pegawai"}</h2>
         <div className="mt-2 overflow-x-auto">
@@ -291,8 +336,11 @@ export default function PratinjauView() {
           )}
         </table>
 
+          </>
+        )}
+
         {/* D — realisasi keuangan: persis seperti isi sheet (tabel per kode + tabel keuangan lain) */}
-        {(week.anggaran.length > 0 || week.tabelKeuangan.length > 0) && (
+        {mode === "semua" && (week.anggaran.length > 0 || week.tabelKeuangan.length > 0) && (
           <>
             <h2 className="mt-7 text-[13px] font-bold">D. Realisasi Keuangan</h2>
             {week.anggaran.length > 0 && week.tabelKeuangan.length > 0 && (

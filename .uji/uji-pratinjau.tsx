@@ -117,6 +117,47 @@ async function main() {
   });
   cek("tombol memuat ulang dari sheet", jumlahBaca > sebelum, `${sebelum} → ${jumlahBaca}`);
 
+  /* ---------------- pilihan kelompok cetak ---------------- */
+  const tombolKelompok = Array.from(document.querySelectorAll("[role=tab]")).map((b) => (b.textContent ?? "").trim());
+  cek("tiga pilihan cetak tersedia", tombolKelompok.join("|") === "Semua|Tim Dukman|Tim Teknis", tombolKelompok.join("|"));
+  cek("laporan lengkap memuat tim teknis", (document.body.textContent ?? "").includes("Sertifikasi Kompetensi SDMKP"));
+  cek("laporan lengkap memuat bagian C dan D", /C\. Rekapitulasi/i.test(document.body.textContent ?? "") && /D\. Realisasi Keuangan/.test(document.body.textContent ?? ""));
+
+  const pasang = async (params: URLSearchParams) => {
+    document.body.innerHTML = "";
+    const w = document.createElement("div");
+    document.body.appendChild(w);
+    const r = createRoot(w);
+    await act(async () => {
+      r.render(
+        <ToastProvider>
+          <AppProvider>
+            <PratinjauView params={params} />
+          </AppProvider>
+        </ToastProvider>,
+      );
+    });
+    await act(async () => {
+      await new Promise((x) => setTimeout(x, 250));
+    });
+  };
+
+  await pasang(new URLSearchParams("cetak=dukman"));
+  const td = document.body.textContent ?? "";
+  cek("cetak tim dukman: judul TIM DUKMAN", td.includes("TIM DUKMAN"));
+  cek("cetak tim dukman: bagian A & B tercetak", /A\. /.test(td) && /B\. /.test(td));
+  cek("cetak tim dukman: berhenti di rencana (tanpa C & D)", !/C\. Rekapitulasi/i.test(td) && !/D\. Realisasi Keuangan/.test(td));
+  cek("cetak tim dukman: hanya tim I–VII", td.includes("Hukum") && !td.includes("Sertifikasi Kompetensi SDMKP") && !td.includes("Penjamin Mutu LSP"), "");
+  cek("cetak tim dukman: pilihan aktif ditandai", (document.querySelector("[role=tab][aria-selected=true]")?.textContent ?? "").trim() === "Tim Dukman");
+
+  await pasang(new URLSearchParams("cetak=teknis"));
+  const tt = document.body.textContent ?? "";
+  cek("cetak tim teknis: judul TIM TEKNIS", tt.includes("TIM TEKNIS"));
+  cek("cetak tim teknis: bagian A & B tercetak", /A\. /.test(tt) && /B\. /.test(tt));
+  cek("cetak tim teknis: berhenti di rencana (tanpa C & D)", !/C\. Rekapitulasi/i.test(tt) && !/D\. Realisasi Keuangan/.test(tt));
+  cek("cetak tim teknis: tiga tim baru tercetak", ["Sertifikasi Kompetensi SDMKP", "Standardisasi Kompetensi", "Penjamin Mutu LSP"].every((x) => tt.includes(x)));
+  cek("cetak tim teknis: tim dukman tidak ikut", !tt.includes("Hukum") && !tt.includes("Kepegawaian"));
+
   const lulus = hasil.filter((h) => h.lulus).length;
   hasil.filter((h) => !h.lulus).forEach((h) => console.log("  GAGAL:", h.nama, "→", h.info));
   console.log(`\n${lulus}/${hasil.length} uji Pratinjau lulus`);

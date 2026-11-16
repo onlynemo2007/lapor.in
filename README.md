@@ -159,6 +159,10 @@ sejak v2.4 aplikasi, **tetapi tulisan ke sheet butuh barisnya ada lebih dulu**:
   dan form rencana menampilkan "belum ada di sheet" (isian tidak dikirim, jadi tidak ada kiriman gagal);
 - begitu baris `VIII. Sertifikasi Kompetensi SDMKP` dan seterusnya ditambahkan di bagian A (5 baris tanggal) dan
   bagian B (1 baris rencana) — di tab mana pun — aplikasi langsung mengenalinya tanpa perubahan kode.
+- Menu **Pratinjau & Cetak** punya pilihan kelompok cetak: **Semua** (A–D, sepuluh tim — seperti sebelumnya),
+  **Tim Dukman** (tim I–VII) dan **Tim Teknis** (tim VIII–X). Dua pilihan terakhir dicetak terpisah dan
+  **hanya sampai tabel B (rencana kegiatan minggu depan)** — bagian C (presensi) dan D (keuangan) tidak ikut.
+  Pilihannya tersimpan di alamat: `#/pratinjau?cetak=dukman` atau `#/pratinjau?cetak=teknis`.
 - Pemilih tim di Form cepat dan Asisten chat memakai baris yang **membungkus** (flex-wrap), bukan geser
   menyamping — 10 tim tetap terlihat semua tanpa menggeser layar, termasuk di HP.
 - Nama tim di sheet dikenali dari kata kuncinya (`sertifikasi`, `standardisasi`, `mutu`), jadi penulisan
