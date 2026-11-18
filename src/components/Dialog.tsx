@@ -118,9 +118,10 @@ export function KonfirmasiProvider({ children }: { children: ReactNode }) {
 
   const tanya = useCallback((m: Minta) => {
     setMinta(m);
-    return new Promise<boolean>((resolve) => {
-      jawab.current = resolve;
-    });
+    // resolve disimpan supaya dialog yang ditutup (Esc / backdrop / tombol) bisa menjawab promise.
+    const { promise, resolve } = Promise.withResolvers<boolean>();
+    jawab.current = resolve;
+    return promise;
   }, []);
 
   const tutup = (v: boolean) => {
