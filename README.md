@@ -243,6 +243,25 @@ langsung di spreadsheet atau oleh rekan ikut terlihat tanpa perlu menekan apa pu
 menampilkan jam **“Data sheet dibaca …”** dan tombol **Ambil data terbaru**; isian lokal yang belum terkirim
 tetap dipertahankan saat pembacaan ulang (tidak tertimpa).
 
+### Panduan web modern untuk agen (Modern Web Guidance)
+
+Repo ini memakai [Modern Web Guidance](https://github.com/GoogleChrome/modern-web-guidance) — kumpulan
+panduan praktik terbaik web dari tim Chrome/Edge/Firefox/MDN yang dibaca agen coding sebelum menulis
+HTML/CSS/JS sisi klien. Terpasang di `.agents/skills/modern-web-guidance/` (target `universal`),
+dengan versi terkunci di `skills-lock.json`.
+
+```bash
+# pasang ulang / perbarui
+DISABLE_TELEMETRY=1 npx modern-web-guidance@latest install --agent universal -y
+DISABLE_TELEMETRY=1 npx modern-web-guidance@latest update
+
+# coba tanpa memasang apa pun
+npx modern-web-guidance@latest search "responsive data table"
+npx modern-web-guidance@latest retrieve "responsive-table"
+```
+
+Catatan: CLI membutuhkan Node.js ≥ 22; berkas panduan (`guides/*.md`) bisa dibaca langsung tanpa jaringan.
+
 ## Struktur singkat
 
 | Berkas | Isi |
@@ -253,3 +272,4 @@ tetap dipertahankan saat pembacaan ulang (tidak tertimpa).
 | `src/lib/store.tsx` | State aplikasi + pengatur sinkron otomatis (jeda, ulang, offline) |
 | `src/lib/rute.ts` | Routing hash: alamat utama = halaman pilih, `#/isi`, `#/dashboard` |
 | `src/views/` | Halaman pilih (landing), Dashboard, Isi laporan, Presensi, Pratinjau, Sinkronisasi |
+| `.agents/skills/modern-web-guidance/` | Panduan web modern untuk agen (Modern Web Guidance, lihat bagian di atas) |
