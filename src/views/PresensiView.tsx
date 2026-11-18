@@ -318,8 +318,8 @@ export default function PresensiView() {
               </div>
             }
           />
-          <div className="thin-scroll overflow-x-auto">
-            <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
+          <div className="tabel-wadah thin-scroll" tabIndex={0} role="region" aria-label="Tabel penggunaan aplikasi presensi">
+            <table className="tabel-tumpuk w-full border-collapse text-[12.5px]">
               <thead>
                 {adaKelompok && (
                   <tr className="border-b border-line text-left text-[10.5px] uppercase tracking-wider text-muted">
@@ -355,12 +355,12 @@ export default function PresensiView() {
                       // kolom penanda hanya bisa dibaca — kecuali pada baris kosong (baris baru)
                       if (k.index === r.labelKolom && r.label)
                         return (
-                          <td key={k.index} className="py-2 pr-2 font-semibold">
+                          <td key={k.index} className="py-2 pr-2 font-semibold" data-label={k.label}>
                             {r.sel[k.index] ?? r.label}
                           </td>
                         );
                       return (
-                        <td key={k.index} className="py-1.5 pr-2">
+                        <td key={k.index} className="py-1.5 pr-2" data-label={k.label}>
                           <input
                             value={nilaiSel(kunci)}
                             onChange={(e) => setSelDraft((d) => ({ ...d, [kunci]: e.target.value }))}

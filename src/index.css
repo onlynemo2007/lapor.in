@@ -103,6 +103,92 @@
   animation-delay: 0.3s;
 }
 
+/* ------------------------------ dialog native ------------------------------ */
+/* <dialog> dibuka dengan showModal(): halaman di belakang inert, fokus terkurung,
+   Esc & gestur "kembali" menutup, dan fokus kembali ke tombol pemicu — semuanya
+   dari browser, jadi tidak perlu focus trap atau handler Esc manual. */
+dialog.dlg {
+  margin: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  max-inline-size: calc(100vw - 2rem);
+  max-block-size: calc(100dvh - 2rem);
+}
+dialog.dlg:not([open]) {
+  display: none;
+}
+/* MANDATORY: tanpa ini, gestur gulir di backdrop/di dalam dialog ikut menggulir halaman */
+dialog.dlg:modal {
+  overscroll-behavior: contain;
+}
+dialog.dlg::backdrop {
+  background: rgb(17 20 18 / 0.4);
+  backdrop-filter: blur(4px);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+/* ------------------------------ tabel responsif ------------------------------ */
+.tabel-wadah {
+  container-type: inline-size;
+  overflow: auto;
+  max-inline-size: 100%;
+}
+/* Lebar minimum hanya berlaku bila ruang cukup — kalau tidak, tabel ditumpuk menjadi kartu */
+@container (width >= 600px) {
+  .tabel-tumpuk {
+    min-inline-size: 680px;
+  }
+}
+@media screen {
+  @container (width < 600px) {
+    .tabel-tumpuk,
+    .tabel-tumpuk tbody,
+    .tabel-tumpuk tfoot,
+    .tabel-tumpuk tr,
+    .tabel-tumpuk td {
+      display: block;
+    }
+    /* MANDATORY: header kolom disembunyikan dari layout & pembaca layar */
+    .tabel-tumpuk thead {
+      display: none;
+    }
+    .tabel-tumpuk tr {
+      margin-block-end: 0.5rem;
+      padding: 0.5rem 0.625rem;
+      border: 1px solid var(--color-line);
+      border-radius: 0.75rem;
+      background: #fff;
+    }
+    .tabel-tumpuk td {
+      display: grid;
+      grid-template-columns: minmax(6.25rem, 38%) 1fr;
+      align-items: center;
+      gap: 0.5rem;
+      border: 0;
+      padding-block: 0.2rem;
+      padding-inline: 0;
+      text-align: start;
+    }
+    .tabel-tumpuk td::before {
+      content: attr(data-label);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--color-muted);
+    }
+    .tabel-tumpuk td:not([data-label]) {
+      grid-template-columns: 1fr;
+    }
+    .tabel-tumpuk td:not([data-label])::before {
+      content: none;
+    }
+    .tabel-tumpuk input {
+      min-inline-size: 0;
+    }
+  }
+}
+
 .thin-scroll::-webkit-scrollbar {
   width: 6px;
   height: 6px;

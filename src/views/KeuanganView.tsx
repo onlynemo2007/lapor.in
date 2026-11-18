@@ -15,6 +15,7 @@ import {
   cx,
   useToast,
 } from "../components/ui";
+import { useKonfirmasi } from "../components/Dialog";
 import { StateGate } from "./common";
 import { jamSinkron } from "../lib/sync";
 
@@ -30,6 +31,7 @@ const kolomUang = (label: string) => KOLOM_UANG.test(label || "") && !BUKAN_UANG
 export default function KeuanganView() {
   const { week, settings, updateWeek, reload, dibacaAt, bacaSaja, admin } = useApp();
   const toast = useToast();
+  const tanya = useKonfirmasi();
   /** Realisasi keuangan hanya boleh diisi tim Keuangan; tim lain (dan bukan admin) hanya melihat. */
   const bolehEditMenu = bolehIsiMenu(settings.timUtama, admin, "keuangan");
   const timPemilik = timMenu("keuangan");
@@ -103,7 +105,7 @@ export default function KeuanganView() {
    * - "anggaran" → hanya baris kode/pagu/realisasi
    * - TabelKeuangan → hanya sel milik tabel itu (tombol Simpan di judul tiap tabel)
    */
-  const simpan = (lingkup: "semua" | "anggaran" | TabelKeuangan = "semua") => {
+  const simpan = async (lingkup: "semua" | "anggaran" | TabelKeuangan = "semua") => {
     if (!bolehEditMenu) {
       toast(`Realisasi keuangan hanya bisa diisi tim ${timPemilik?.label ?? "Keuangan"} — Anda hanya bisa melihat`, "err");
       return;
@@ -120,9 +122,13 @@ export default function KeuanganView() {
     const rekapBerubah = kodeBerubah.filter((a) => induk.has(a.kode));
     if (rekapBerubah.length) {
       const nama = rekapBerubah.map((a) => `${a.kode} ${a.uraian}`).join(", ");
-      const lanjut = window.confirm(
-        `Baris rekap berisi rumus jumlah otomatis di sheet:\n\n${nama}\n\nBila disimpan, RUMUS di sel itu diganti angka yang Anda ketik, sehingga angkanya tidak lagi mengikuti baris di bawahnya. Lanjutkan?`,
-      );
+      const lanjut = await tanya({
+        judul: "Baris rekap berisi rumus sheet",
+        pesan: `${nama}\n\nBila disimpan, RUMUS di sel itu diganti angka yang Anda ketik, sehingga angkanya tidak lagi mengikuti baris di bawahnya.`,
+        labelYa: "Timpa rumus",
+        labelBatal: "Batal",
+        bahaya: true,
+      });
       if (!lanjut) return;
     }
     updateWeek((w) => {
@@ -224,7 +230,7 @@ export default function KeuanganView() {
           >
             <I.print className="h-4 w-4" /> Cetak keuangan
           </Btn>
-          <Btn variant="brand" onClick={() => simpan("semua")} disabled={terkunciIsi || (!berubah.length && !selBerubah.length)}>
+          <Btn variant="brand" onClick={() => void simpan("semua")} disabled={terkunciIsi || (!berubah.length && !selBerubah.length)}>
             <I.check className="h-4 w-4" />
             {terkunciIsi ? "Hanya lihat" : `Simpan${berubah.length + selBerubah.length ? ` (${berubah.length + selBerubah.length})` : ""}`}
           </Btn>
@@ -287,7 +293,7 @@ export default function KeuanganView() {
               <Btn
                 variant="brand"
                 size="sm"
-                onClick={() => simpan("anggaran")}
+                onClick={() => void simpan("anggaran")}
                 disabled={!berubah.length || terkunciIsi}
                 aria-label="Simpan tabel realisasi anggaran"
                 title="Simpan perubahan pagu/realisasi tabel ini"
@@ -306,8 +312,8 @@ export default function KeuanganView() {
             <b>Ambil data terbaru</b>.
           </p>
         ) : (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-[12.5px]">
+          <div className="tabel-wadah thin-scroll mt-3" tabIndex={0} role="region" aria-label="Realisasi anggaran per kode">
+            <table className="tabel-tumpuk w-full border-collapse text-[12.5px]">
               <thead>
                 <tr className="border-b border-line text-left text-[11px] uppercase tracking-wider text-muted">
                   <th className="w-[112px] py-2 pr-2 font-semibold">Kode</th>
@@ -328,7 +334,7 @@ export default function KeuanganView() {
                   const kotor = d.uraian !== a.uraian || pagu !== a.pagu || real !== a.realisasi;
                   return (
                     <tr key={a.kode} className={cx("border-b border-line/70 align-top", kotor && "bg-warn-soft/40")}>
-                      <td className="py-2 pr-2 font-mono text-[11.5px] text-muted">
+                      <td className="py-2 pr-2 font-mono text-[11.5px] text-muted" data-label="Kode">
                         {a.kode}
                         {rekap && (
                           <Pill
@@ -340,7 +346,7 @@ export default function KeuanganView() {
                           </Pill>
                         )}
                       </td>
-                      <td className="py-2 pr-2">
+                      <td className="py-2 pr-2" data-label="Uraian kegiatan">
                         {rekap ? (
                           <span className="block px-1.5 py-1 text-[12.5px] font-semibold">{a.uraian}</span>
                         ) : (
@@ -352,10 +358,10 @@ export default function KeuanganView() {
                           />
                         )}
                       </td>
-                      <td className="py-2 pr-2">
+                      <td className="py-2 pr-2" data-label="Pagu (Rp)">
                         <InputRp value={d.pagu} onChange={(v) => set(a.kode, { pagu: v })} aria-label={`Pagu ${a.uraian}`} warn={kotor} readOnly={terkunciIsi} />
                       </td>
-                      <td className="py-2 pr-2">
+                      <td className="py-2 pr-2" data-label="Realisasi (Rp)">
                         <InputRp
                           value={d.realisasi}
                           onChange={(v) => set(a.kode, { realisasi: v })}
@@ -364,10 +370,10 @@ export default function KeuanganView() {
                           readOnly={terkunciIsi}
                         />
                       </td>
-                      <td className="py-2 pr-2 text-right font-mono text-[12px] text-muted">
+                      <td className="py-2 pr-2 text-right font-mono text-[12px] text-muted" data-label="Sisa (Rp)">
                         {pagu || real ? (pagu - real).toLocaleString("id-ID") : "—"}
                       </td>
-                      <td className="py-2 text-right">
+                      <td className="py-2 text-right" data-label="Serapan">
                         <span className={cx("font-mono text-[12px] font-bold", p >= 100 ? "text-brand" : p > 0 ? "text-ink" : "text-muted")}>
                           {p ? `${p.toFixed(1).replace(".", ",")}%` : "—"}
                         </span>
@@ -381,9 +387,9 @@ export default function KeuanganView() {
                   <td className="py-3 pr-2" colSpan={2}>
                     Total ({tampil.length} baris)
                   </td>
-                  <td className="py-3 pr-2 text-right font-mono">{rupiah(total.pagu)}</td>
-                  <td className="py-3 pr-2 text-right font-mono">{rupiah(total.realisasi)}</td>
-                  <td className="py-3 text-right font-mono">{persen ? `${persen.toFixed(1).replace(".", ",")}%` : "—"}</td>
+                  <td className="py-3 pr-2 text-right font-mono" data-label="Pagu (Rp)">{rupiah(total.pagu)}</td>
+                  <td className="py-3 pr-2 text-right font-mono" data-label="Realisasi (Rp)">{rupiah(total.realisasi)}</td>
+                  <td className="py-3 text-right font-mono" data-label="Serapan">{persen ? `${persen.toFixed(1).replace(".", ",")}%` : "—"}</td>
                 </tr>
               </tfoot>
             </table>
@@ -422,7 +428,7 @@ export default function KeuanganView() {
                 <Btn
                   variant="brand"
                   size="sm"
-                  onClick={() => simpan(t)}
+                  onClick={() => void simpan(t)}
                   disabled={terkunciIsi || !milik.length}
                   aria-label={`Simpan tabel ${t.judul}`}
                   title="Simpan perubahan pada tabel ini"
@@ -432,8 +438,8 @@ export default function KeuanganView() {
               </div>
             }
           />
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px] border-collapse text-[12.5px]">
+          <div className="tabel-wadah thin-scroll" tabIndex={0} role="region" aria-label={`Tabel ${t.judul}`}>
+            <table className="tabel-tumpuk w-full border-collapse text-[12.5px]">
               <thead>
                 <tr className="border-b border-line text-left text-[11px] uppercase tracking-wider text-muted">
                   {t.kolom.map((k) => (
@@ -452,12 +458,12 @@ export default function KeuanganView() {
                       // kolom penanda hanya bisa dibaca — kecuali pada baris yang masih kosong (baris baru)
                       if (k.index === r.labelKolom && r.label)
                         return (
-                          <td key={k.index} className="py-2 pr-2 font-semibold">
+                          <td key={k.index} className="py-2 pr-2 font-semibold" data-label={k.label}>
                             {r.sel[k.index] ?? r.label}
                           </td>
                         );
                       return (
-                        <td key={k.index} className="py-1.5 pr-2">
+                        <td key={k.index} className="py-1.5 pr-2" data-label={k.label}>
                           {kolomUang(k.label) && berupaAngka(nilai(kunci)) ? (
                             /* kolom uang: ketik 11114038 → tampil Rp 11.114.038, yang disimpan tetap digit murni */
                             <InputRp

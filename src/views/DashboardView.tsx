@@ -173,8 +173,8 @@ export default function DashboardView() {
             </div>
           }
         />
-        <div className="thin-scroll -mx-1 overflow-x-auto px-1 pb-1">
-          <table className="w-full min-w-[620px] border-separate border-spacing-1.5">
+        <div className="tabel-wadah thin-scroll -mx-1 px-1 pb-1" tabIndex={0} role="region" aria-label="Peta isian kegiatan per tim dan tanggal">
+          <table className="tabel-tumpuk w-full border-separate border-spacing-1.5">
             <thead>
               <tr>
                 <th className="w-[210px]" />
@@ -197,7 +197,7 @@ export default function DashboardView() {
                     data-tim-saya={mine ? "1" : undefined}
                     className={cx(mine && "bg-brand-soft/70 [&>td]:rounded-lg")}
                   >
-                    <td className={cx("pr-2", mine && "border-l-[3px] border-brand pl-2")}>
+                    <td className={cx("pr-2", mine && "border-l-[3px] border-brand pl-2")} data-label="">
                       <div className="flex items-center gap-2">
                         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: tim.tone }} />
                         <span className={cx("truncate text-[13px]", mine ? "font-bold" : "font-medium")}>

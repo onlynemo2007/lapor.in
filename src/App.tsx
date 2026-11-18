@@ -1,6 +1,7 @@
 import { AppProvider } from "./lib/store";
 import Shell, { useRoute } from "./components/Shell";
 import { ToastProvider } from "./components/ui";
+import { KonfirmasiProvider } from "./components/Dialog";
 import DashboardView from "./views/DashboardView";
 import IsiView from "./views/IsiView";
 import PresensiView from "./views/PresensiView";
@@ -29,9 +30,11 @@ function Router() {
 export default function App() {
   return (
     <ToastProvider>
-      <AppProvider>
-        <Router />
-      </AppProvider>
+      <KonfirmasiProvider>
+        <AppProvider>
+          <Router />
+        </AppProvider>
+      </KonfirmasiProvider>
     </ToastProvider>
   );
 }

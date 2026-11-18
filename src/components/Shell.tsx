@@ -6,6 +6,7 @@ import { StatusSinkron } from "./SyncBadge";
 import { PeringatanKoneksi, PeringatanMinggu } from "./Koneksi";
 import { VIEW_AWAL, ruteDariHash } from "../lib/rute";
 import { SCRIPT_VERSI } from "../lib/sheet";
+import { Dialog } from "./Dialog";
 import { enterFinal } from "../utils/enter";
 
 export type View = typeof VIEW_AWAL | "dashboard" | "isi" | "presensi" | "keuangan" | "pratinjau" | "sinkron";
@@ -322,14 +323,14 @@ function KunciMinggu({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="no-print anim-fade fixed inset-0 z-[70] grid place-items-center bg-ink/40 p-4 backdrop-blur-sm">
-      <div className="anim-pop flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+    <Dialog open onClose={onClose} labelledBy="judul-kunci-minggu" wide>
+      <div className="no-print flex min-h-0 flex-col">
         <div className="flex items-start gap-3 border-b border-line px-6 py-5">
           <span className={cx("grid h-10 w-10 shrink-0 place-items-center rounded-2xl", admin ? "bg-brand-soft text-brand" : "bg-paper text-muted")}>
             <I.lock className="h-5 w-5" />
           </span>
           <div className="min-w-0">
-            <h2 className="text-[17px] font-bold tracking-tight">Kunci minggu</h2>
+            <h2 id="judul-kunci-minggu" className="text-[17px] font-bold tracking-tight">Kunci minggu</h2>
             <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
               Minggu terbaru ({mingguTerbaru ? nama(mingguTerbaru) : "—"}) selalu bisa diisi. Minggu lama otomatis
               menjadi <b>hanya lihat</b>; admin bisa membukanya (PIN) supaya isinya dapat diedit lagi.
@@ -433,6 +434,7 @@ function KunciMinggu({ onClose }: { onClose: () => void }) {
                 <span className="block text-[11.5px] font-semibold text-muted">PIN admin</span>
                 <input
                   type="password"
+                  autoFocus
                   value={pin}
                   onChange={(e) => setPin(e.target.value)}
                   onKeyDown={(e) => {
@@ -460,7 +462,7 @@ function KunciMinggu({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -479,12 +481,12 @@ function Profil({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="no-print anim-fade fixed inset-0 z-[70] grid place-items-center bg-ink/40 p-4 backdrop-blur-sm">
-      <div className="anim-pop w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+    <Dialog open onClose={onClose} labelledBy="judul-profil" dismissible={!first}>
+      <div className="no-print p-6">
         <div className="flex items-center gap-3">
           <Logo className="h-10 w-10" />
           <div>
-            <h2 className="text-[18px] font-bold tracking-tight">{first ? "Selamat datang di Lapor.in" : "Profil pengisi"}</h2>
+            <h2 id="judul-profil" className="text-[18px] font-bold tracking-tight">{first ? "Selamat datang di Lapor.in" : "Profil pengisi"}</h2>
             <p className="text-[13px] text-muted">Nama dicatat di setiap isian dan di log sheet.</p>
           </div>
         </div>
@@ -534,6 +536,6 @@ function Profil({ onClose }: { onClose: () => void }) {
           </Btn>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

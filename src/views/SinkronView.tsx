@@ -6,6 +6,7 @@ import { jamSinkron, waktuSinkron } from "../lib/sync";
 import { tautanSiapPakai } from "../lib/koneksi";
 import { Btn, Card, I, Pill, Spinner, cx, salin, useToast } from "../components/ui";
 import { StatusSinkron } from "../components/SyncBadge";
+import { useKonfirmasi } from "../components/Dialog";
 import { StateGate } from "./common";
 import { enterFinal } from "../utils/enter";
 
@@ -39,6 +40,7 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
     aturKunciMinggu,
   } = useApp();
   const toast = useToast();
+  const tanya = useKonfirmasi();
   const [copied, setCopied] = useState("");
   const [busy, setBusy] = useState<"" | "tes" | "kirim">("");
   const [hasil, setHasil] = useState<{ ok: boolean; text: string } | null>(null);
@@ -144,10 +146,15 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
     }
   };
 
-  const putus = () => {
-    const yakin = window.confirm(
-      "Putuskan koneksi Apps Script di perangkat ini?\n\nURL Web App dan token akan dihapus dari perangkat ini saja. Isi Google Sheet tidak berubah, dan isian yang belum terkirim tetap tersimpan.",
-    );
+  const putus = async () => {
+    const yakin = await tanya({
+      judul: "Putuskan koneksi Apps Script?",
+      pesan:
+        "URL Web App dan token dihapus dari perangkat ini saja. Isi Google Sheet tidak berubah, dan isian yang belum terkirim tetap tersimpan.",
+      labelYa: "Putuskan koneksi",
+      labelBatal: "Batal",
+      bahaya: true,
+    });
     if (!yakin) return;
     putuskanKoneksi();
     setUrlDraf("");
@@ -922,7 +929,7 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
                   <p className="text-[11.5px] leading-relaxed text-muted">
                     Hanya bila ingin memutus dari perangkat ini. Sheet tidak diubah.
                   </p>
-                  <Btn variant="danger" size="sm" onClick={putus} disabled={busy !== ""}>
+                  <Btn variant="danger" size="sm" onClick={() => void putus()} disabled={busy !== ""}>
                     <I.x className="h-3.5 w-3.5" /> Putuskan koneksi
                   </Btn>
                 </div>
