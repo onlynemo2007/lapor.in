@@ -28,6 +28,7 @@ import { Btn, Card, I, Pill, cx, useToast } from "../components/ui";
 import ItemsEditor from "./ItemsEditor";
 import ChatAsisten from "./ChatAsisten";
 import { StateGate } from "./common";
+import { enterFinal } from "../utils/enter";
 
 type Mode = "form" | "chat" | "rencana";
 
@@ -462,7 +463,7 @@ function FormKegiatan({ week, params }: { week: WeekData; params: URLSearchParam
             value={lampBaru}
             onChange={(e) => setLampBaru(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (enterFinal(e)) {
                 e.preventDefault();
                 tambahLamp();
               }

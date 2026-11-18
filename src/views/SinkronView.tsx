@@ -7,6 +7,7 @@ import { tautanSiapPakai } from "../lib/koneksi";
 import { Btn, Card, I, Pill, Spinner, cx, salin, useToast } from "../components/ui";
 import { StatusSinkron } from "../components/SyncBadge";
 import { StateGate } from "./common";
+import { enterFinal } from "../utils/enter";
 
 export default function SinkronView({ params }: { params: URLSearchParams }) {
   const {
@@ -547,7 +548,7 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
                     value={namaBaru}
                     onChange={(e) => setNamaManual(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter" && terpasang && !busyBuat) {
+                      if (enterFinal(e) && terpasang && !busyBuat) {
                         e.preventDefault();
                         void buatMinggu();
                       }
@@ -824,7 +825,7 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
                 onChange={(e) => setUrlDraf(e.target.value)}
                 onBlur={() => simpanKoneksi(true)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  if (enterFinal(e)) {
                     e.preventDefault();
                     simpanKoneksi();
                   }
@@ -846,7 +847,7 @@ export default function SinkronView({ params }: { params: URLSearchParams }) {
                 onChange={(e) => setTokenDraf(e.target.value)}
                 onBlur={() => simpanKoneksi(true)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  if (enterFinal(e)) {
                     e.preventDefault();
                     simpanKoneksi();
                   }

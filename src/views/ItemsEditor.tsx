@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { rapikan, teksKeButir } from "../lib/model";
 import { I, cx } from "../components/ui";
+import { enterFinal } from "../utils/enter";
 
 /** Editor daftar butir bernomor — dipakai untuk kegiatan harian & rencana. */
 export default function ItemsEditor({
@@ -117,7 +118,7 @@ export default function ItemsEditor({
               onSubmit?.();
               return;
             }
-            if (e.key === "Enter" && !e.shiftKey) {
+            if (enterFinal(e) && !e.shiftKey) {
               e.preventDefault();
               tambah(draft);
             }

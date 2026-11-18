@@ -993,15 +993,14 @@ export type ScriptResult = {
 };
 
 const simpul = (e: unknown) =>
-  e instanceof Error && e.name === "AbortError"
+  e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")
     ? "Koneksi ke Apps Script timeout."
     : "Tidak bisa menghubungi Apps Script. Periksa URL Web App & koneksi internet.";
 
 /** Kirim paket perubahan ke Apps Script. `verified` = balasan skrip terbaca. */
 export async function kirimKeScript(url: string, payload: Payload, batasMs = 25000): Promise<ScriptResult> {
   const body = JSON.stringify(payload);
-  const ctrl = new AbortController();
-  const jam = setTimeout(() => ctrl.abort(), batasMs);
+  const batas = AbortSignal.timeout(batasMs);
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -1009,7 +1008,7 @@ export async function kirimKeScript(url: string, payload: Payload, batasMs = 250
       // text/plain = permintaan sederhana, jadi tidak memicu preflight CORS
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       redirect: "follow",
-      signal: ctrl.signal,
+      signal: batas,
     });
     const teks = await res.text();
     try {
@@ -1023,22 +1022,17 @@ export async function kirimKeScript(url: string, payload: Payload, batasMs = 250
     // Beberapa browser memblokir balasan Apps Script: kirim ulang tanpa membaca balasan
     // (nilainya idempoten, jadi aman bila ternyata kiriman pertama sudah masuk).
     try {
-      const ctrl2 = new AbortController();
-      const jam2 = setTimeout(() => ctrl2.abort(), 15000);
       await fetch(url, {
         method: "POST",
         body,
         mode: "no-cors",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        signal: ctrl2.signal,
+        signal: AbortSignal.timeout(15000),
       });
-      clearTimeout(jam2);
       return { ok: true, verified: false };
     } catch (e) {
       throw new Error(simpul(e));
     }
-  } finally {
-    clearTimeout(jam);
   }
 }
 
@@ -1071,15 +1065,13 @@ export async function buatTabBaru(
   pin = "",
 ): Promise<BuatTabResult> {
   const body = JSON.stringify({ token, aksi: "buatTab", sumberGid, nama, geserHari, oleh, pin });
-  const ctrl = new AbortController();
-  const jam = setTimeout(() => ctrl.abort(), 60000);
   try {
     const res = await fetch(url, {
       method: "POST",
       body,
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       redirect: "follow",
-      signal: ctrl.signal,
+      signal: AbortSignal.timeout(60000),
     });
     const teks = await res.text();
     let data: BuatTabResult;
@@ -1100,11 +1092,9 @@ export async function buatTabBaru(
     }
     return { ...data, ok: true };
   } catch (e) {
-    if (e instanceof Error && e.name === "AbortError") throw new Error("Pembuatan tab melebihi batas waktu. Periksa sheet — bila tab sudah ada, cukup muat ulang daftar tab.");
+    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) throw new Error("Pembuatan tab melebihi batas waktu. Periksa sheet — bila tab sudah ada, cukup muat ulang daftar tab.");
     if (e instanceof Error && /Balasan skrip/.test(e.message)) throw e;
     throw new Error("Tidak bisa menghubungi Apps Script untuk membuat tab baru. Periksa URL Web App & koneksi internet.");
-  } finally {
-    clearTimeout(jam);
   }
 }
 
@@ -1122,14 +1112,11 @@ export type SkripInfo = {
 };
 
 export async function tesScript(url: string): Promise<SkripInfo> {
-  const ctrl = new AbortController();
-  const jam = setTimeout(() => ctrl.abort(), 15000);
-  try {
-    const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}aksi=ping`, { redirect: "follow", signal: ctrl.signal });
-    return await res.json();
-  } finally {
-    clearTimeout(jam);
-  }
+  const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}aksi=ping`, {
+    redirect: "follow",
+    signal: AbortSignal.timeout(15000),
+  });
+  return await res.json();
 }
 
 /**
@@ -1164,19 +1151,18 @@ export function bolehBukaKoneksi(
 
 /** Tanyakan ke skrip apakah PIN admin ini benar (PIN tidak pernah disimpan di skrip). */
 export async function cekPin(url: string, pin: string): Promise<{ ok: boolean; adaPin?: boolean; error?: string }> {
-  const ctrl = new AbortController();
-  const jam = setTimeout(() => ctrl.abort(), 15000);
   try {
     const q = `aksi=pin&pin=${encodeURIComponent(pin)}`;
-    const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}${q}`, { redirect: "follow", signal: ctrl.signal });
+    const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}${q}`, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(15000),
+    });
     const data = (await res.json()) as { ok?: boolean; adaPin?: boolean };
     // Skrip lama (v2.1) menjawab semua permintaan dengan ok:true dan tanpa `adaPin`,
     // jadi PIN hanya diterima bila balasannya benar-benar dari fitur PIN (v2.2).
     return { ok: data.ok === true && data.adaPin === true, adaPin: data.adaPin };
   } catch {
     return { ok: false, error: "Tidak bisa memeriksa PIN ke Apps Script." };
-  } finally {
-    clearTimeout(jam);
   }
 }
 
@@ -1191,15 +1177,13 @@ export async function aturMinggu(
   buka: boolean,
 ): Promise<HasilMinggu> {
   const body = JSON.stringify({ token, pin, aksi: buka ? "bukaMinggu" : "kunciMinggu", gid });
-  const ctrl = new AbortController();
-  const jam = setTimeout(() => ctrl.abort(), 25000);
   try {
     const res = await fetch(url, {
       method: "POST",
       body,
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       redirect: "follow",
-      signal: ctrl.signal,
+      signal: AbortSignal.timeout(25000),
     });
     const teks = await res.text();
     try {
@@ -1210,8 +1194,6 @@ export async function aturMinggu(
   } catch (e) {
     if (e instanceof Error && /Balasan skrip/.test(e.message)) throw e;
     throw new Error("Tidak bisa menghubungi Apps Script. Periksa URL Web App & koneksi internet.");
-  } finally {
-    clearTimeout(jam);
   }
 }
 

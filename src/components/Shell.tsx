@@ -6,6 +6,7 @@ import { StatusSinkron } from "./SyncBadge";
 import { PeringatanKoneksi, PeringatanMinggu } from "./Koneksi";
 import { VIEW_AWAL, ruteDariHash } from "../lib/rute";
 import { SCRIPT_VERSI } from "../lib/sheet";
+import { enterFinal } from "../utils/enter";
 
 export type View = typeof VIEW_AWAL | "dashboard" | "isi" | "presensi" | "keuangan" | "pratinjau" | "sinkron";
 
@@ -493,7 +494,7 @@ function Profil({ onClose }: { onClose: () => void }) {
           autoFocus
           value={nama}
           onChange={(e) => setNama(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && simpan()}
+          onKeyDown={(e) => enterFinal(e) && simpan()}
           placeholder="cth. Rani Oktavia"
           className="mt-1.5 w-full rounded-xl border border-line bg-paper px-4 py-3 text-[14px] outline-none transition focus:border-brand focus:bg-white"
         />
